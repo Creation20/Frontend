@@ -3,12 +3,11 @@ import { StyleSheet, Dimensions, Platform } from 'react-native';
 const { width, height } = Dimensions.get('window');
 
 /**
- * ROCK-SOLID Z-INDEX ARCHITECTURE
- * 1: Background Layer
- * 5: Scrollable Content Layer (Navigation, Card, Actions)
- * 10: Focus Overlay Layer (Ruler & Masks) - MUST USE pointerEvents="box-none"
- * 20: Control Layer (Header & Toolbar)
- * 30: AI Assistant Layer (Ask Lexi)
+ * LAYER ARCHITECTURE
+ * 5:  Scrollable Content (card, navigation, actions)
+ * 10: Focus System (ruler + masks)
+ * 20: Fixed Controls (header + toolbar)
+ * 30: AI Assistant FAB
  */
 
 export const readerStyles = StyleSheet.create({
@@ -16,93 +15,82 @@ export const readerStyles = StyleSheet.create({
     flex: 1,
   },
 
-  // LAYER 5: SCROLLABLE CONTENT
-  scrollView: {
-    flex: 1,
-  },
+  // ─── LAYER 5: SCROLLABLE CONTENT ────────────────────────────────────────────
   scrollContent: {
-    paddingTop: 140, // Space for Header
-    paddingBottom: 180, // Space for Toolbar
+    paddingTop: 130,
+    paddingBottom: 200,
     paddingHorizontal: 20,
-    gap: 20,
+    gap: 16,
   },
 
-  // Content Navigation (Integrated)
+  // Chunk navigation row
   contentNav: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   navButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 100,
     borderWidth: 1.5,
     gap: 6,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    elevation: 0,
   },
   navButtonText: {
-    fontSize: 14,
-    fontWeight: '800',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   sectionInfo: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 100,
   },
   sectionInfoText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '900',
-    letterSpacing: 1,
+    letterSpacing: 1.5,
   },
 
-  // Document Content Card
+  // Reading content card
   cardContainer: {
-    borderRadius: 36,
-    borderWidth: 2,
-    padding: 26,
-    minHeight: 320,
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.1,
-    shadowRadius: 15,
+    borderRadius: 28,
+    borderWidth: 1.5,
+    padding: 28,
+    minHeight: 340,
+    elevation: 0,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
   },
 
-  // Executive Action Buttons
+  // Action row below card
   actionRow: {
     flexDirection: 'row',
-    gap: 14,
-    marginTop: 10,
+    gap: 12,
+    marginTop: 4,
   },
   mainAction: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    height: 60,
-    borderRadius: 22,
+    height: 56,
+    borderRadius: 18,
     borderWidth: 1.5,
-    gap: 10,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
+    gap: 8,
   },
   mainActionText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
+    letterSpacing: 0.3,
   },
 
-  // LAYER 10: FOCUS SYSTEM (Overlays)
+  // ─── LAYER 10: FOCUS SYSTEM ─────────────────────────────────────────────────
   focusOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 10,
@@ -123,83 +111,116 @@ export const readerStyles = StyleSheet.create({
   rulerHandle: {
     position: 'absolute',
     right: 0,
-    width: 48,
-    height: 68,
-    borderTopLeftRadius: 18,
-    borderBottomLeftRadius: 18,
+    width: 44,
+    height: 60,
+    borderTopLeftRadius: 14,
+    borderBottomLeftRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 10,
+    elevation: 8,
     shadowColor: '#000',
-    shadowOffset: { width: -4, height: 0 },
-    shadowOpacity: 0.2,
+    shadowOffset: { width: -2, height: 0 },
+    shadowOpacity: 0.15,
     shadowRadius: 6,
   },
+  rulerLabel: {
+    position: 'absolute',
+    left: 16,
+    top: '50%',
+    marginTop: -8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    opacity: 0.4,
+  },
+  rulerLabelText: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
 
-  // LAYER 20: CONTROLS
+  // ─── LAYER 20: FIXED HEADER ─────────────────────────────────────────────────
   headerFixed: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     zIndex: 20,
+  },
+  headerBlur: {
     borderBottomWidth: 1,
   },
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 14,
+    paddingVertical: 12,
+    gap: 12,
   },
-  iconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  headerBackBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: 1.5,
   },
-  metaContainer: {
+  headerMeta: {
     flex: 1,
+    gap: 2,
   },
-  titleText: {
-    fontSize: 15,
-    fontWeight: '900',
+  headerDocTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: -0.2,
   },
   headerChips: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginTop: 4,
   },
-  toolBadge: {
+  headerChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 8,
     borderWidth: 1,
   },
-  toolBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
+  headerChipText: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
-  chipDot: {
-    width: 4,
-    height: 4,
+  headerDot: {
+    width: 3,
+    height: 3,
     borderRadius: 2,
   },
-  progressBarTrack: {
+  headerShareBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+  },
+
+  // Progress bar under header
+  progressBarContainer: {
     height: 3,
     width: '100%',
+    overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
+    borderRadius: 2,
   },
 
+  // ─── LAYER 20: FLOATING TOOLBAR ─────────────────────────────────────────────
   toolbarFixed: {
     position: 'absolute',
     bottom: 0,
@@ -207,24 +228,50 @@ export const readerStyles = StyleSheet.create({
     right: 0,
     zIndex: 20,
     paddingHorizontal: 20,
-    paddingBottom: 28,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
   },
 
-  // LAYER 30: ASSISTANT
+  // ─── LAYER 30: AI FAB ────────────────────────────────────────────────────────
   assistantFloating: {
     position: 'absolute',
-    bottom: 120,
+    bottom: 130,
     right: 20,
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
     zIndex: 30,
+    elevation: 10,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+  },
+  assistantRing: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 2,
+    opacity: 0.3,
+  },
+
+  // ─── DISTRACTION FREE HINT ──────────────────────────────────────────────────
+  tapHint: {
+    position: 'absolute',
+    bottom: 40,
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 100,
+    zIndex: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  tapHintText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
 });

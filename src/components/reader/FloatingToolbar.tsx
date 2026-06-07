@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Animated,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../hooks/useTheme';
@@ -40,299 +39,368 @@ export function FloatingToolbar({
   } = useReaderStore();
   const { toggle } = useTTS();
 
-  const [activeTab, setActiveTab] = useState<'playback' | 'appearance'>('playback');
+  const [activeTab, setActiveTab] = useState<'audio' | 'reading'>('audio');
 
-  const progress = totalChunks > 0
-    ? Math.round(((currentChunkIndex + 1) / totalChunks) * 100)
-    : 0;
+  const isFirstChunk = currentChunkIndex === 0;
+  const isLastChunk  = currentChunkIndex >= totalChunks - 1;
 
   return (
-    <View style={styles.outerContainer}>
-      {/* Top Progress Info */}
-      <View style={[styles.infoPill, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-        <Text style={[styles.infoText, { color: theme.textSecondary }]}>
-          Section {currentChunkIndex + 1} of {totalChunks}
-        </Text>
-        <View style={styles.infoDivider} />
-        <Text style={[styles.infoText, { color: theme.primary, fontWeight: '700' }]}>
-          {progress}% read
-        </Text>
+    <View style={styles.wrapper}>
+      {/* Tab Pills */}
+      <View style={[styles.tabRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <TouchableOpacity
+          onPress={() => setActiveTab('audio')}
+          style={[styles.tabPill, activeTab === 'audio' && { backgroundColor: theme.primary }]}
+        >
+          <Ionicons name="headset-outline" size={14} color={activeTab === 'audio' ? '#FFF' : theme.textMuted} />
+          <Text style={[styles.tabPillText, { color: activeTab === 'audio' ? '#FFF' : theme.textMuted }]}>Audio</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setActiveTab('reading')}
+          style={[styles.tabPill, activeTab === 'reading' && { backgroundColor: theme.primary }]}
+        >
+          <Ionicons name="book-outline" size={14} color={activeTab === 'reading' ? '#FFF' : theme.textMuted} />
+          <Text style={[styles.tabPillText, { color: activeTab === 'reading' ? '#FFF' : theme.textMuted }]}>Reading</Text>
+        </TouchableOpacity>
       </View>
 
-      <View
-        style={[
-          styles.mainToolbar,
-          {
-            backgroundColor: theme.surfaceElevated,
-            borderColor: theme.border,
-            shadowColor: theme.shadow,
-          },
-        ]}
-      >
-        {/* Tab Switcher */}
-        <View style={[styles.tabBar, { backgroundColor: theme.primaryLight }]}>
-          <TabButton
-            active={activeTab === 'playback'}
-            onPress={() => setActiveTab('playback')}
-            icon="play-circle-outline"
-            label="Playback"
-            theme={theme}
-          />
-          <TabButton
-            active={activeTab === 'appearance'}
-            onPress={() => setActiveTab('appearance')}
-            icon="text-outline"
-            label="Reading"
-            theme={theme}
-          />
-        </View>
+      {/* Toolbar Card */}
+      <View style={[styles.toolbar, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
 
-        <View style={styles.contentRow}>
-          {activeTab === 'playback' ? (
-            <View style={styles.group}>
-              <IconButton
-                icon="chevron-back"
-                onPress={prevChunk}
-                disabled={currentChunkIndex === 0}
-                theme={theme}
-              />
-              
-              <TouchableOpacity
-                onPress={() => toggle(currentText)}
-                activeOpacity={0.8}
-                style={[styles.playBtn, { backgroundColor: theme.primary }]}
-              >
-                {isTTSLoading ? (
-                  <ActivityIndicator color="#FFF" size="small" />
-                ) : (
-                  <Ionicons name={isPlaying ? 'pause' : 'play'} size={24} color="#FFF" />
-                )}
-              </TouchableOpacity>
+        {/* ── AUDIO TAB ───────────────────────────────────────────────────── */}
+        {activeTab === 'audio' && (
+          <View style={styles.audioRow}>
+            {/* Prev */}
+            <TouchableOpacity
+              onPress={prevChunk}
+              disabled={isFirstChunk}
+              style={[styles.navBtn, { borderColor: theme.border, opacity: isFirstChunk ? 0.3 : 1 }]}
+            >
+              <Ionicons name="play-skip-back" size={18} color={theme.textSecondary} />
+            </TouchableOpacity>
 
-              <IconButton
-                icon="chevron-forward"
-                onPress={nextChunk}
-                disabled={currentChunkIndex === totalChunks - 1}
-                theme={theme}
-              />
+            {/* Play/Pause */}
+            <TouchableOpacity
+              onPress={() => toggle(currentText)}
+              activeOpacity={0.85}
+              style={[styles.playBtn, { backgroundColor: theme.primary }]}
+            >
+              {isTTSLoading
+                ? <ActivityIndicator color="#FFF" size="small" />
+                : <Ionicons name={isPlaying ? 'pause' : 'play'} size={26} color="#FFF" />
+              }
+            </TouchableOpacity>
 
-              <View style={styles.vDivider} />
+            {/* Next */}
+            <TouchableOpacity
+              onPress={nextChunk}
+              disabled={isLastChunk}
+              style={[styles.navBtn, { borderColor: theme.border, opacity: isLastChunk ? 0.3 : 1 }]}
+            >
+              <Ionicons name="play-skip-forward" size={18} color={theme.textSecondary} />
+            </TouchableOpacity>
 
-              <TouchableOpacity
-                onPress={onSpeedChange}
-                style={[styles.speedBadge, { backgroundColor: theme.surface }]}
-              >
-                <Text style={[styles.speedText, { color: theme.primary }]}>
-                  {settings.ttsSpeed.toFixed(1)}x
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.group}>
-              {/* Appearance Controls */}
-              <IconButton
-                icon="remove"
-                onPress={onFontSizeDecrease}
-                theme={theme}
-              />
-              <View style={styles.fontSizeLabel}>
-                <Text style={[styles.fontSizeText, { color: theme.text }]}>
-                  {settings.fontSize}
-                </Text>
+            <View style={[styles.vDivider, { backgroundColor: theme.border }]} />
+
+            {/* Speed badge */}
+            <TouchableOpacity onPress={onSpeedChange} style={[styles.speedBtn, { backgroundColor: theme.primaryLight }]}>
+              <Text style={[styles.speedText, { color: theme.primary }]}>{settings.ttsSpeed.toFixed(1)}×</Text>
+            </TouchableOpacity>
+
+            {/* AI simplified toggle */}
+            <TouchableOpacity
+              onPress={toggleSimplified}
+              style={[styles.aiBtn, {
+                backgroundColor: showSimplified ? theme.accent + '18' : 'transparent',
+                borderColor:     showSimplified ? theme.accent : theme.border,
+              }]}
+            >
+              <MaterialCommunityIcons name="robot-outline" size={16} color={showSimplified ? theme.accent : theme.textMuted} />
+              <Text style={[styles.aiBtnText, { color: showSimplified ? theme.accent : theme.textMuted }]}>AI</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ── READING TAB ─────────────────────────────────────────────────── */}
+        {activeTab === 'reading' && (
+          <View style={styles.readingContent}>
+            {/* Font size row */}
+            <View style={[styles.fontRow, { borderColor: theme.border }]}>
+              <Text style={[styles.fontRowLabel, { color: theme.textMuted }]}>Font Size</Text>
+              <View style={styles.fontControls}>
+                <TouchableOpacity onPress={onFontSizeDecrease} style={[styles.fontBtn, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+                  <Text style={[styles.fontBtnIcon, { color: theme.textSecondary }]}>A−</Text>
+                </TouchableOpacity>
+                <View style={[styles.fontSizeChip, { backgroundColor: theme.primaryLight }]}>
+                  <Text style={[styles.fontSizeNum, { color: theme.primary }]}>{settings.fontSize}</Text>
+                  <Text style={[styles.fontSizePx, { color: theme.primary }]}>px</Text>
+                </View>
+                <TouchableOpacity onPress={onFontSizeIncrease} style={[styles.fontBtn, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+                  <Text style={[styles.fontBtnIcon, { color: theme.textSecondary }]}>A+</Text>
+                </TouchableOpacity>
               </View>
-              <IconButton
-                icon="add"
-                onPress={onFontSizeIncrease}
-                theme={theme}
-              />
-
-              <View style={styles.vDivider} />
-
-              {/* AI & Bionic Toggles */}
-              <ToggleButton
-                icon="robot-outline"
-                active={showSimplified}
-                onPress={toggleSimplified}
-                theme={theme}
-                activeColor={theme.accent}
-              />
-              <ToggleButton
-                icon="eye-check-outline"
-                active={settings.bionicReadingEnabled}
-                onPress={() => updateSetting('bionicReadingEnabled', !settings.bionicReadingEnabled)}
-                theme={theme}
-                activeColor={theme.primary}
-              />
             </View>
-          )}
-        </View>
+
+            {/* Toggle cards */}
+            <View style={styles.toggleGrid}>
+              {/* Bionic Reading */}
+              <TouchableOpacity
+                onPress={() => updateSetting('bionicReadingEnabled', !settings.bionicReadingEnabled)}
+                activeOpacity={0.8}
+                style={[styles.toggleCard, {
+                  backgroundColor: settings.bionicReadingEnabled ? theme.primary : theme.surface,
+                  borderColor:     settings.bionicReadingEnabled ? theme.primary : theme.border,
+                }]}
+              >
+                <View style={[styles.toggleCardIcon, {
+                  backgroundColor: settings.bionicReadingEnabled ? 'rgba(255,255,255,0.2)' : theme.primaryLight,
+                }]}>
+                  <MaterialCommunityIcons
+                    name="eye-check-outline"
+                    size={20}
+                    color={settings.bionicReadingEnabled ? '#FFF' : theme.primary}
+                  />
+                </View>
+                <View style={styles.toggleCardText}>
+                  <Text style={[styles.toggleCardTitle, {
+                    color: settings.bionicReadingEnabled ? '#FFF' : theme.text,
+                  }]}>
+                    Bionic
+                  </Text>
+                  <Text style={[styles.toggleCardSub, {
+                    color: settings.bionicReadingEnabled ? 'rgba(255,255,255,0.7)' : theme.textMuted,
+                  }]}>
+                    Bold anchors
+                  </Text>
+                </View>
+                <View style={[styles.toggleCardDot, {
+                  backgroundColor: settings.bionicReadingEnabled ? '#FFF' : theme.border,
+                }]} />
+              </TouchableOpacity>
+
+              {/* Grammar / POS Colors */}
+              <TouchableOpacity
+                onPress={() => updateSetting('grammarHighlightingEnabled', !settings.grammarHighlightingEnabled)}
+                activeOpacity={0.8}
+                style={[styles.toggleCard, {
+                  backgroundColor: settings.grammarHighlightingEnabled ? '#7C3AED' : theme.surface,
+                  borderColor:     settings.grammarHighlightingEnabled ? '#7C3AED' : theme.border,
+                }]}
+              >
+                <View style={[styles.toggleCardIcon, {
+                  backgroundColor: settings.grammarHighlightingEnabled ? 'rgba(255,255,255,0.2)' : '#EDE9FE',
+                }]}>
+                  <MaterialCommunityIcons
+                    name="palette-outline"
+                    size={20}
+                    color={settings.grammarHighlightingEnabled ? '#FFF' : '#7C3AED'}
+                  />
+                </View>
+                <View style={styles.toggleCardText}>
+                  <Text style={[styles.toggleCardTitle, {
+                    color: settings.grammarHighlightingEnabled ? '#FFF' : theme.text,
+                  }]}>
+                    Grammar
+                  </Text>
+                  <Text style={[styles.toggleCardSub, {
+                    color: settings.grammarHighlightingEnabled ? 'rgba(255,255,255,0.7)' : theme.textMuted,
+                  }]}>
+                    Color POS
+                  </Text>
+                </View>
+                <View style={[styles.toggleCardDot, {
+                  backgroundColor: settings.grammarHighlightingEnabled ? '#FFF' : theme.border,
+                }]} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </View>
     </View>
   );
 }
 
-function TabButton({ active, onPress, icon, label, theme }: any) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={[
-        styles.tabBtn,
-        active && { backgroundColor: theme.surfaceElevated }
-      ]}
-    >
-      <Ionicons name={icon} size={16} color={active ? theme.primary : theme.textMuted} />
-      <Text style={[styles.tabLabel, { color: active ? theme.primary : theme.textMuted }]}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
-
-function IconButton({ icon, onPress, disabled, theme }: any) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      disabled={disabled}
-      style={[styles.iconBtn, { backgroundColor: theme.surface }]}
-    >
-      <Ionicons name={icon} size={20} color={disabled ? theme.textMuted : theme.textSecondary} />
-    </TouchableOpacity>
-  );
-}
-
-function ToggleButton({ icon, active, onPress, theme, activeColor }: any) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={[
-        styles.toggleBtn,
-        { 
-          backgroundColor: active ? (activeColor + '15') : theme.surface,
-          borderColor: active ? activeColor : theme.border
-        }
-      ]}
-    >
-      <MaterialCommunityIcons 
-        name={icon} 
-        size={20} 
-        color={active ? activeColor : theme.textMuted} 
-      />
-    </TouchableOpacity>
-  );
-}
-
 const styles = StyleSheet.create({
-  outerContainer: {
-    alignItems: 'center',
-    width: '100%',
-    gap: 8,
-  },
-  infoPill: {
+  wrapper: { gap: 8 },
+
+  // Tab pills
+  tabRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
+    alignSelf: 'center',
+    borderRadius: 100,
     borderWidth: 1,
-    gap: 8,
-  },
-  infoText: {
-    fontSize: 12,
-  },
-  infoDivider: {
-    width: 1,
-    height: 12,
-    backgroundColor: 'rgba(0,0,0,0.1)',
-  },
-  mainToolbar: {
-    width: '100%',
-    borderRadius: 24,
-    borderWidth: 1,
-    padding: 8,
-    elevation: 10,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    borderRadius: 16,
     padding: 4,
-    marginBottom: 8,
+    gap: 4,
   },
-  tabBtn: {
-    flex: 1,
+  tabPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 18,
     paddingVertical: 8,
-    borderRadius: 12,
+    borderRadius: 100,
     gap: 6,
   },
-  tabLabel: {
+  tabPillText: {
     fontSize: 12,
     fontWeight: '700',
+    letterSpacing: 0.3,
   },
-  contentRow: {
-    paddingHorizontal: 8,
-    paddingBottom: 4,
+
+  // Toolbar card
+  toolbar: {
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    elevation: 12,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
   },
-  group: {
+
+  // ── Audio tab ────────────────────────────────────────────────────────────
+  audioRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
+  },
+  navBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   playBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 4,
+    elevation: 6,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
-    shadowRadius: 4,
+    shadowRadius: 8,
   },
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  vDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-  },
-  speedBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+  vDivider: { width: 1, height: 28 },
+  speedBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
   },
   speedText: {
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: -0.3,
   },
-  fontSizeLabel: {
-    minWidth: 32,
+  aiBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    gap: 5,
   },
-  fontSizeText: {
-    fontSize: 15,
+  aiBtnText: {
+    fontSize: 11,
     fontWeight: '800',
+    letterSpacing: 0.3,
   },
-  toggleBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+
+  // ── Reading tab ──────────────────────────────────────────────────────────
+  readingContent: { gap: 14 },
+
+  // Font size row
+  fontRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+  },
+  fontRowLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  fontControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  fontBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  fontBtnIcon: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  fontSizeChip: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 2,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 10,
+  },
+  fontSizeNum: {
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+  },
+  fontSizePx: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+
+  // Toggle cards grid
+  toggleGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  toggleCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 18,
     borderWidth: 1.5,
-  }
+    gap: 10,
+  },
+  toggleCardIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toggleCardText: {
+    flex: 1,
+    gap: 2,
+  },
+  toggleCardTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  toggleCardSub: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  toggleCardDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
 });

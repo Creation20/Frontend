@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { bionicSplit, getPartOfSpeech, POS } from '../../utils/text.utils';
@@ -15,23 +15,29 @@ export function ReaderText({ text, currentWordIndex, onWordPress, onWordLayout }
   const theme = useTheme();
   const { settings } = useSettingsStore();
   const words = text.trim().split(/\s+/);
-  
-  // Store the Y position of every word to allow instant lookup for synchronization
   const wordPositions = useRef<Record<number, number>>({});
 
   useEffect(() => {
-    // When the active word changes, report its stored position to the parent (for Ruler sync)
     if (currentWordIndex >= 0 && wordPositions.current[currentWordIndex] !== undefined) {
       onWordLayout?.(currentWordIndex, wordPositions.current[currentWordIndex]);
     }
   }, [currentWordIndex, onWordLayout]);
 
-  const getPOSColor = (pos: POS): string | undefined => {
-    if (!settings.grammarHighlightingEnabled) return undefined;
-    const colors: Record<POS, string> = {
-      noun: '#3B82F6', verb: '#10B981', adjective: '#F59E0B', conjunction: '#EC4899', other: theme.text,
+  // Executive POS Colors: Muted, professional palette
+  const getPOSStyle = (pos: POS, isHighlighted: boolean): any => {
+    if (!settings.grammarHighlightingEnabled) return {};
+    
+    // In Audio mode, we don't show POS colors to reduce cognitive load
+    if (currentWordIndex !== -1) return {};
+
+    const styles: Record<POS, any> = {
+      noun: { color: '#0B6E6E', borderBottomWidth: 1.5, borderBottomColor: '#0B6E6E30' },
+      verb: { color: '#3B82F6', borderBottomWidth: 1.5, borderBottomColor: '#3B82F630' },
+      adjective: { color: '#F59E0B', borderBottomWidth: 1.5, borderBottomColor: '#F59E0B30' },
+      conjunction: { color: '#8B5CF6', borderBottomWidth: 1.5, borderBottomColor: '#8B5CF630' },
+      other: {},
     };
-    return colors[pos];
+    return styles[pos] || {};
   };
 
   return (
@@ -39,15 +45,13 @@ export function ReaderText({ text, currentWordIndex, onWordPress, onWordLayout }
       {words.map((word, idx) => {
         const isHighlighted = idx === currentWordIndex;
         const pos = getPartOfSpeech(word);
-        const posColor = getPOSColor(pos);
+        const posStyle = getPOSStyle(pos, isHighlighted);
 
         return (
           <View 
             key={idx} 
             onLayout={(e) => {
-              // Capture the vertical position relative to the ReaderText container
               wordPositions.current[idx] = e.nativeEvent.layout.y;
-              // If this is the current word (on initial load), report it
               if (idx === currentWordIndex) onWordLayout?.(idx, e.nativeEvent.layout.y);
             }}
             style={styles.wordWrapper}
@@ -57,11 +61,16 @@ export function ReaderText({ text, currentWordIndex, onWordPress, onWordLayout }
               activeOpacity={0.7}
               style={[
                 styles.touchable,
-                { backgroundColor: isHighlighted ? theme.highlight : 'transparent', borderRadius: 4 }
+                { backgroundColor: isHighlighted ? theme.primary + '15' : 'transparent', borderRadius: 6 }
               ]}
             >
               {settings.bionicReadingEnabled ? (
-                <BionicText word={word} theme={theme} isHighlighted={isHighlighted} posColor={posColor} />
+                <BionicText 
+                  word={word} 
+                  theme={theme} 
+                  isHighlighted={isHighlighted} 
+                  posStyle={posStyle} 
+                />
               ) : (
                 <Text
                   style={[
@@ -70,8 +79,9 @@ export function ReaderText({ text, currentWordIndex, onWordPress, onWordLayout }
                       fontFamily: theme.fontFamily,
                       fontSize: theme.fontSize,
                       lineHeight: theme.fontSize * theme.lineHeight,
-                      color: isHighlighted ? theme.highlightText : (posColor ?? theme.text),
+                      color: isHighlighted ? theme.primary : (posStyle.color ?? theme.text),
                     },
+                    posStyle
                   ]}
                 >
                   {word}
@@ -86,13 +96,21 @@ export function ReaderText({ text, currentWordIndex, onWordPress, onWordLayout }
   );
 }
 
-function BionicText({ word, theme, isHighlighted, posColor }: any) {
+function BionicText({ word, theme, isHighlighted, posStyle }: any) {
   const { bold, normal } = bionicSplit(word);
-  const color = isHighlighted ? theme.highlightText : (posColor ?? theme.text);
+  const color = isHighlighted ? theme.primary : (posStyle.color ?? theme.text);
+  
   return (
-    <Text style={{ fontSize: theme.fontSize, lineHeight: theme.fontSize * theme.lineHeight }}>
-      <Text style={[styles.boldPart, { fontFamily: theme.fontFamily, color }]}>{bold}</Text>
-      <Text style={{ fontFamily: theme.fontFamily, color }}>{normal}</Text>
+    <Text style={[
+      { fontSize: theme.fontSize, lineHeight: theme.fontSize * theme.lineHeight },
+      posStyle
+    ]}>
+      <Text style={[styles.boldPart, { fontFamily: theme.fontFamily, color, fontWeight: '900' }]}>
+        {bold}
+      </Text>
+      <Text style={{ fontFamily: theme.fontFamily, color, opacity: isHighlighted ? 1 : 0.85 }}>
+        {normal}
+      </Text>
     </Text>
   );
 }
@@ -100,8 +118,8 @@ function BionicText({ word, theme, isHighlighted, posColor }: any) {
 const styles = StyleSheet.create({
   container: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start' },
   wordWrapper: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  touchable: { paddingHorizontal: 2 },
+  touchable: { paddingHorizontal: 2, paddingVertical: 1 },
   wordText: { textAlign: 'center' },
-  boldPart: { fontWeight: '800' },
+  boldPart: { },
   space: { opacity: 0 },
 });
