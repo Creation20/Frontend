@@ -1,0 +1,259 @@
+// This is your Prisma schema file
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// USER & AUTH
+// ============================================================
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  username     String   @unique
+  email        String   @unique
+  passwordHash String
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Gamification
+  level  Int @default(1)
+  xp     Int @default(0)
+  points Int @default(0)
+
+  // Streaks & Goals
+  streak          Int      @default(0)
+  lastActiveDate  DateTime?
+  dailyGoalMinutes Int     @default(20)
+  bestReadingTime  String  @default("09:00 AM")
+
+  // Stats (rolling 7-day arrays stored as JSON)
+  wpmHistory           Json @default("[]")
+  comprehensionHistory Json @default("[]")
+  totalReadingTime     Int  @default(0) // seconds
+
+  // Relations
+  settings      Settings?
+  documents     Document[]
+  vocabulary    VocabularyWord[]
+  badges        UserBadge[]
+  sessionLogs   SessionLog[]
+  quizResults   QuizResult[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+// ============================================================
+// SETTINGS
+// ============================================================
+
+model Settings {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  // Appearance
+  theme       String @default("default")
+  fontFamily  String @default("Lexend")
+  fontSize    Float  @default(18)
+  lineHeight  Float  @default(1.8)
+  letterSpacing Float @default(0.5)
+  wordSpacing  Float @default(0)
+  screenTint   String? // Irlen filter color
+
+  // Reading Modes
+  bionicReadingEnabled     Boolean @default(false)
+  focusRulerEnabled        Boolean @default(false)
+  focusRulerColor          String  @default("rgba(11,110,110,0.15)")
+  marginGuideEnabled       Boolean @default(false)
+  distractionFreeMode      Boolean @default(false)
+  simplifiedTextDefault    Boolean @default(false)
+  grammarHighlightingEnabled Boolean @default(false)
+
+  // Chunking
+  chunkingEnabled Boolean @default(true)
+  chunkSize       String  @default("medium") // small | medium | large
+
+  // TTS
+  ttsEnabled          Boolean @default(false)
+  ttsSpeed            Float   @default(0.9)
+  ttsPitch            Float   @default(1.0)
+  highlightingEnabled Boolean @default(true)
+  highlightColor      String  @default("#F59E0B")
+
+  // Accessibility
+  reducedMotion Boolean @default(false)
+  largeTargets  Boolean @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("settings")
+}
+
+// ============================================================
+// DOCUMENTS & LIBRARY
+// ============================================================
+
+model Document {
+  id     String @id @default(cuid())
+  userId String
+
+  title    String
+  subject  String  @default("General")
+  author   String  @default("Unknown")
+  category String  @default("article") // lecture | article | textbook | personal
+
+  // Content
+  content           String  @db.Text
+  simplifiedContent String  @db.Text @default("")
+  chunks            Json    @default("[]") // string[]
+  flashcards        Json    @default("[]") // Flashcard[]
+
+  // Metadata
+  wordCount             Int    @default(0)
+  pages                 Int    @default(0)
+  estimatedReadingTime  Int    @default(0) // minutes
+  coverColor            String @default("#0B6E6E")
+
+  // Progress
+  progress    Int      @default(0)   // 0–100
+  readingTime Int      @default(0)   // seconds
+
+  // Timestamps
+  uploadedAt DateTime  @default(now())
+  lastReadAt DateTime?
+
+  // Soft delete
+  deletedAt DateTime?
+
+  // Relations
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookmarks Bookmark[]
+  quizzes   Quiz[]
+  quizResults QuizResult[]
+  sessionLogs SessionLog[]
+
+  @@map("documents")
+}
+
+model Bookmark {
+  id         String   @id @default(cuid())
+  documentId String
+  chunkIndex Int
+  wordIndex  Int      @default(0)
+  note       String?
+  createdAt  DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@map("bookmarks")
+}
+
+// ============================================================
+// QUIZ & RESULTS
+// ============================================================
+
+model Quiz {
+  id         String   @id @default(cuid())
+  documentId String
+  questions  Json     // ComprehensionQuestion[]
+  createdAt  DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@map("quizzes")
+}
+
+model QuizResult {
+  id         String   @id @default(cuid())
+  userId     String
+  documentId String
+  quizId     String
+  score      Int
+  total      Int
+  completedAt DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@map("quiz_results")
+}
+
+// ============================================================
+// VOCABULARY
+// ============================================================
+
+model VocabularyWord {
+  id         String   @id @default(cuid())
+  userId     String
+  word       String
+  definition String   @db.Text
+  syllables  String   @default("")
+  etymology  String?  @db.Text
+  tappedCount Int     @default(1)
+  mastered   Boolean  @default(false)
+  notes      String?
+  lastTapped DateTime @default(now())
+  addedAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, word])
+  @@map("vocabulary_words")
+}
+
+// ============================================================
+// BADGES / ACHIEVEMENTS
+// ============================================================
+
+model UserBadge {
+  id       String   @id @default(cuid())
+  userId   String
+  badgeId  String   // e.g. "fast-reader", "scholar"
+  earnedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeId])
+  @@map("user_badges")
+}
+
+// ============================================================
+// SESSION LOGS (WPM Engine)
+// ============================================================
+
+model SessionLog {
+  id             String   @id @default(cuid())
+  userId         String
+  documentId     String?
+  elapsedSeconds Int      // Active reading time (pauses excluded)
+  wordsRead      Int
+  wpm            Float    @default(0)
+  accuracy       Float    @default(0) // comprehension score 0-100
+  recordedAt     DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@map("session_logs")
+}
