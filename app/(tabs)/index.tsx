@@ -16,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useLibraryStore } from '../../src/store/useLibraryStore';
 import { useUserStore } from '../../src/store/useUserStore';
+import { useSettingsStore } from '../../src/store/useSettingsStore';
 import { DocumentCard } from '../../src/components/home/DocumentCard';
 
 const { width } = Dimensions.get('window');
@@ -23,8 +24,8 @@ const { width } = Dimensions.get('window');
 export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { documents } = useLibraryStore();
-  const { user } = useUserStore();
+  const { documents, getRecommendations, fetchDocuments } = useLibraryStore();
+  const { user, fetchProfile } = useUserStore();
   const scrollY = useRef(new Animated.Value(0)).current;
 
   // Animation values
@@ -36,10 +37,19 @@ export default function HomeScreen() {
       Animated.timing(fadeAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
       Animated.spring(slideAnim, { toValue: 0, friction: 8, tension: 40, useNativeDriver: true }),
     ]).start();
+
+    // Fetch live data
+    fetchDocuments();
+    fetchProfile().catch(err => console.warn('Home Profile Fetch Error:', err.message));
   }, []);
 
-  const totalReadingMinutes = Math.floor(
-    documents.reduce((sum, d) => sum + (d.readingTime || 0), 0) / 60
+  const { settings } = useSettingsStore();
+  const totalReadingSeconds = documents.reduce((sum, d) => sum + (d.readingTime || 0), 0);
+  const totalReadingMinutes = Math.floor(totalReadingSeconds / 60);
+  const goalProgress = Math.min(100, (totalReadingMinutes / settings.dailyGoalMinutes) * 100);
+  
+  const avgAccuracy = Math.round(
+    user.comprehensionHistory.reduce((a, b) => a + b, 0) / (user.comprehensionHistory.length || 1)
   );
 
   const headerOpacity = scrollY.interpolate({
@@ -113,13 +123,13 @@ export default function HomeScreen() {
                 <LinearGradient 
                   colors={[theme.primary, theme.accent]} 
                   start={{x:0, y:0}} end={{x:1, y:0}}
-                  style={[styles.progressFill, { width: '65%' }]} 
+                  style={[styles.progressFill, { width: `${goalProgress}%` }]} 
                 />
              </View>
 
              <View style={styles.dashFooter}>
-                <Text style={[styles.footerText, { color: theme.textMuted }]}>85% Accuracy</Text>
-                <Text style={[styles.footerText, { color: theme.textMuted }]}>Goal: 20m</Text>
+                <Text style={[styles.footerText, { color: theme.textMuted }]}>{avgAccuracy}% Accuracy</Text>
+                <Text style={[styles.footerText, { color: theme.textMuted }]}>Goal: {settings.dailyGoalMinutes}m</Text>
              </View>
           </View>
 
@@ -131,6 +141,29 @@ export default function HomeScreen() {
              <ActionItem icon="settings" label="Setup" color="#64748B" onPress={() => router.push('/(tabs)/settings')} />
           </View>
         </Animated.View>
+
+        <View style={styles.libraryHeader}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Recommended for You</Text>
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recommendationList}>
+          {getRecommendations(3).map((doc) => (
+             <TouchableOpacity 
+                key={doc.id} 
+                onPress={() => router.push(`/reader/${doc.id}`)}
+                style={[styles.recCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
+             >
+                <View style={[styles.recCover, { backgroundColor: doc.coverColor + '20' }]}>
+                   <MaterialCommunityIcons name="book-open-variant" size={32} color={doc.coverColor} />
+                </View>
+                <Text style={[styles.recTitle, { color: theme.text }]} numberOfLines={2}>{doc.title}</Text>
+                <View style={styles.recMeta}>
+                   <Ionicons name="time-outline" size={12} color={theme.textMuted} />
+                   <Text style={[styles.recTime, { color: theme.textMuted }]}>{doc.estimatedReadingTime}m read</Text>
+                </View>
+             </TouchableOpacity>
+          ))}
+        </ScrollView>
 
         {/* library section remained untouched per request */}
         <View style={styles.libraryHeader}>
@@ -198,6 +231,12 @@ const styles = StyleSheet.create({
   actionItem: { width: (width - 76) / 4, padding: 14, borderRadius: 24, borderWidth: 1, alignItems: 'center', gap: 10, elevation: 1 },
   actionIconBox: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   actionLabel: { fontSize: 11, fontWeight: '800' },
+  recommendationList: { gap: 12, paddingBottom: 24 },
+  recCard: { width: 160, padding: 12, borderRadius: 24, borderWidth: 1, gap: 10 },
+  recCover: { width: '100%', height: 100, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  recTitle: { fontSize: 13, fontWeight: '800', lineHeight: 18 },
+  recMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  recTime: { fontSize: 10, fontWeight: '700' },
   libraryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   sectionTitle: { fontSize: 20, fontWeight: '900', letterSpacing: -0.5 },
   seeAll: { fontSize: 14, fontWeight: '700' },

@@ -14,16 +14,17 @@ import {
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../hooks/useTheme';
 import { useReaderStore, ChatMessage } from '../../store/useReaderStore';
+import { api } from '../../utils/api';
 
 export function AskLexiModal() {
   const theme = useTheme();
-  const { isChatVisible, setChatVisible, chatMessages, addChatMessage } = useReaderStore();
+  const { isChatVisible, setChatVisible, chatMessages, addChatMessage, currentDocumentId } = useReaderStore();
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
-  const handleSend = () => {
-    if (!inputText.trim()) return;
+  const handleSend = async () => {
+    if (!inputText.trim() || !currentDocumentId) return;
 
     const userMsg = inputText.trim();
     setInputText('');
@@ -31,22 +32,24 @@ export function AskLexiModal() {
 
     setIsTyping(true);
 
-    // Mock AI Response logic
-    setTimeout(() => {
-      let response = "I'm here to help you understand the text! What specifically would you like me to explain?";
+    try {
+      // Prepare history for API (map role names if necessary)
+      const history = chatMessages.map(m => ({
+        role: m.role === 'user' ? 'user' : 'model',
+        text: m.text
+      }));
 
-      const q = userMsg.toLowerCase();
-      if (q.includes('summary') || q.includes('summarize')) {
-        response = "This section discusses the fundamental concepts of the document. It highlights the importance of the main subject and how it relates to the broader field of study.";
-      } else if (q.includes('difficult') || q.includes('hard')) {
-        response = "Some words here like 'mitochondria' or 'equilibrium' might be tricky. Mitochondria are the energy producers of a cell, and equilibrium means balance.";
-      } else if (q.includes('help')) {
-        response = "You can ask me to summarize sections, define complex words, or explain the main ideas in simpler terms!";
-      }
-
-      addChatMessage({ role: 'assistant', text: response });
+      const result = await api.ai.chat(currentDocumentId, userMsg, history);
+      addChatMessage({ role: 'assistant', text: result.response });
+    } catch (err: any) {
+      addChatMessage({ 
+        role: 'assistant', 
+        text: "I'm sorry, I'm having trouble connecting to my AI brain right now. Please try again in a moment." 
+      });
+      console.warn('AI Chat Error:', err.message);
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
   };
 
   useEffect(() => {

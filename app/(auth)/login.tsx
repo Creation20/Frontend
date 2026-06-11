@@ -13,9 +13,11 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useUserStore } from '../../src/store/useUserStore';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { login } = useUserStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -29,11 +31,16 @@ export default function LoginScreen() {
     }
     setError('');
     setLoading(true);
-    // Mock login — in production this would call the backend
-    setTimeout(() => {
+    
+    try {
+      await login(email, password);
+      router.replace('/(tabs)');
+    } catch (err: any) {
+      setError(err.message || 'Login failed. Please check your credentials.');
+    } finally {
+      setLoading(true); // Keep it loading while redirecting or set to false if error
       setLoading(false);
-      router.replace('/(auth)/diagnostic');
-    }, 1200);
+    }
   };
 
   return (
@@ -145,25 +152,6 @@ export default function LoginScreen() {
                 </>
               )}
             </LinearGradient>
-          </TouchableOpacity>
-
-          {/* Divider */}
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or continue with</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          {/* Demo Login */}
-          <TouchableOpacity
-            onPress={() => {
-              setEmail('kofi.agyemang@ug.edu.gh');
-              setPassword('demo1234');
-            }}
-            style={styles.demoBtn}
-          >
-            <Ionicons name="person-circle-outline" size={18} color="#0B6E6E" />
-            <Text style={styles.demoBtnText}>Use Demo Account</Text>
           </TouchableOpacity>
 
           {/* Sign Up Link */}

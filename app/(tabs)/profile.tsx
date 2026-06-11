@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -31,11 +31,15 @@ export default function ProfileScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { documents } = useLibraryStore();
-  const { user, updateUser, addBadge } = useUserStore();
+  const { user, updateUser, addBadge, fetchProfile, logout } = useUserStore();
 
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [achievementVisible, setAchievementVisible] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<UserBadge | null>(null);
+
+  useEffect(() => {
+    fetchProfile().catch(err => console.warn('Profile Fetch Error:', err.message));
+  }, []);
 
   const totalReadingSeconds = documents.reduce((s, d) => s + (d.readingTime || 0), 0);
   const totalMinutes = Math.floor(totalReadingSeconds / 60);
@@ -47,6 +51,20 @@ export default function ProfileScreen() {
   const avgAccuracy = Math.round(
     user.comprehensionHistory.reduce((a, b) => a + b, 0) / (user.comprehensionHistory.length || 1)
   );
+
+  const handleLogout = async () => {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      { 
+        text: 'Sign Out', 
+        style: 'destructive', 
+        onPress: async () => {
+          await logout();
+          router.replace('/(auth)/login');
+        } 
+      },
+    ]);
+  };
 
   const handleGenerateReport = async () => {
     const html = `<html><head><style>body { font-family: sans-serif; padding: 40px; } .header { color: #0B6E6E; border-bottom: 2px solid #E2E8F0; padding-bottom: 20px; }</style></head><body><h1 class="header">LexiAid Progress Report</h1><p>Student: ${user.name}</p><p>Avg Speed: ${avgWPM} WPM</p><p>Accuracy: ${avgAccuracy}%</p></body></html>`;
@@ -97,8 +115,12 @@ export default function ProfileScreen() {
                 </View>
                 <View style={styles.userText}>
                   <Text style={styles.userName}>{user.name}</Text>
-                  <View style={styles.userBadge}>
-                    <Text style={styles.userSub}>@{user.username} · {user.level}</Text>
+                  <View style={styles.levelProgressContainer}>
+                    <Text style={styles.levelText}>Level {user.level}</Text>
+                    <View style={styles.xpBarTrack}>
+                      <View style={[styles.xpBarFill, { width: `${(user.xp % 1000) / 10}%` }]} />
+                    </View>
+                    <Text style={styles.xpText}>{user.xp % 1000} / 1000 XP</Text>
                   </View>
                 </View>
               </View>
@@ -156,7 +178,7 @@ export default function ProfileScreen() {
             <MenuOption icon="person-outline" label="Account Details" onPress={() => setEditModalVisible(true)} theme={theme} />
             <MenuOption icon="notifications-outline" label="Reminders" theme={theme} />
             <MenuOption icon="help-circle-outline" label="Help & Support" theme={theme} />
-            <MenuOption icon="log-out-outline" label="Sign Out" onPress={() => router.replace('/(auth)/login')} theme={theme} />
+            <MenuOption icon="log-out-outline" label="Sign Out" onPress={handleLogout} theme={theme} />
           </View>
         </View>
 
@@ -250,10 +272,13 @@ const styles = StyleSheet.create({
   avatarWrapper: { position: 'relative' },
   avatar: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: 'rgba(255,255,255,0.2)' },
   statusDot: { position: 'absolute', bottom: 4, right: 4, width: 16, height: 16, borderRadius: 8, borderWidth: 3, borderColor: '#0B6E6E' },
-  userText: { gap: 4 },
+  userText: { gap: 6 },
   userName: { fontSize: 24, fontWeight: '900', color: '#FFF', letterSpacing: -0.5 },
-  userBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  userSub: { fontSize: 12, color: 'rgba(255,255,255,0.9)', fontWeight: '600' },
+  levelProgressContainer: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  levelText: { fontSize: 12, color: '#FFF', fontWeight: '900' },
+  xpBarTrack: { width: 80, height: 6, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 3, overflow: 'hidden' },
+  xpBarFill: { height: '100%', backgroundColor: '#F59E0B' },
+  xpText: { fontSize: 10, color: 'rgba(255,255,255,0.8)', fontWeight: '700' },
   metricsGrid: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.15)', borderRadius: 24, padding: 20, justifyContent: 'space-between', alignItems: 'center' },
   metricItem: { flex: 1, alignItems: 'center', gap: 2 },
   metricVal: { fontSize: 20, fontWeight: '900', color: '#FFF' },

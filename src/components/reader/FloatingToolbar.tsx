@@ -39,7 +39,7 @@ export function FloatingToolbar({
   } = useReaderStore();
   const { toggle } = useTTS();
 
-  const [activeTab, setActiveTab] = useState<'audio' | 'reading'>('audio');
+  const [activeTab, setActiveTab] = useState<'audio' | 'display'>('audio');
 
   const isFirstChunk = currentChunkIndex === 0;
   const isLastChunk  = currentChunkIndex >= totalChunks - 1;
@@ -57,11 +57,11 @@ export function FloatingToolbar({
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => setActiveTab('reading')}
-          style={[styles.tabPill, activeTab === 'reading' && { backgroundColor: theme.primary }]}
+          onPress={() => setActiveTab('display')}
+          style={[styles.tabPill, activeTab === 'display' && { backgroundColor: theme.primary }]}
         >
-          <Ionicons name="book-outline" size={14} color={activeTab === 'reading' ? '#FFF' : theme.textMuted} />
-          <Text style={[styles.tabPillText, { color: activeTab === 'reading' ? '#FFF' : theme.textMuted }]}>Reading</Text>
+          <Ionicons name="text-outline" size={14} color={activeTab === 'display' ? '#FFF' : theme.textMuted} />
+          <Text style={[styles.tabPillText, { color: activeTab === 'display' ? '#FFF' : theme.textMuted }]}>Display</Text>
         </TouchableOpacity>
       </View>
 
@@ -122,8 +122,8 @@ export function FloatingToolbar({
           </View>
         )}
 
-        {/* ── READING TAB ─────────────────────────────────────────────────── */}
-        {activeTab === 'reading' && (
+        {/* ── DISPLAY TAB ─────────────────────────────────────────────────── */}
+        {activeTab === 'display' && (
           <View style={styles.readingContent}>
             {/* Font size row */}
             <View style={[styles.fontRow, { borderColor: theme.border }]}>
@@ -312,7 +312,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  // ── Reading tab ──────────────────────────────────────────────────────────
+  // ── Display tab ──────────────────────────────────────────────────────────
   readingContent: { gap: 14 },
 
   // Font size row

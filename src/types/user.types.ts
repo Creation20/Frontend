@@ -22,7 +22,9 @@ export interface UserProfile {
   name: string;
   username: string;
   email: string;
-  level: string;
+  level: number;
+  xp: number;
+  points: number;
   avatar: string | null;
   streak: number;
   totalReadingTime: number; // seconds

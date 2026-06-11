@@ -25,7 +25,7 @@ export function ComprehensionQuiz({
   onClose,
 }: ComprehensionQuizProps) {
   const theme = useTheme();
-  const { addMissedQuestion } = useUserStore();
+  const { addMissedQuestion, addXP } = useUserStore();
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [score, setScore] = useState(0);
   const [showResults, setShowResults] = useState(false);
@@ -42,7 +42,8 @@ export function ComprehensionQuiz({
   }, [visible]);
 
   const handleAnswer = (index: number) => {
-    if (index === quiz.questions[currentQuestion].correctIndex) {
+    const isCorrect = index === quiz.questions[currentQuestion].correctIndex;
+    if (isCorrect) {
       setScore(score + 1);
     } else {
       // Track missed question for Adaptive AI
@@ -51,6 +52,9 @@ export function ComprehensionQuiz({
 
     if (isLast) {
       setShowResults(true);
+      // Award XP: 50 base + 50 per correct answer
+      const xpToAward = 50 + (isCorrect ? score + 1 : score) * 50;
+      addXP(xpToAward);
     } else {
       setCurrentQuestion(currentQuestion + 1);
     }

@@ -71,7 +71,10 @@ export default function VocabularyStudioScreen() {
 
       {/* Matching Game Entry */}
       {user.vocabulary.length >= 4 && (
-        <TouchableOpacity style={[styles.gameBtn, { backgroundColor: theme.primary }]}>
+        <TouchableOpacity 
+          onPress={() => router.push('/vocabulary/challenge')}
+          style={[styles.gameBtn, { backgroundColor: theme.primary }]}
+        >
            <MaterialCommunityIcons name="controller-classic" size={24} color="#FFF" />
            <Text style={styles.gameBtnText}>Start Vocab Challenge</Text>
         </TouchableOpacity>

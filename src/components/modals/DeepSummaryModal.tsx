@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,10 +6,13 @@ import {
   Modal,
   TouchableOpacity,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../hooks/useTheme';
-import { Document } from '../../constants/mockData';
+import { useUserStore } from '../../store/useUserStore';
+import { Document } from '../../types/document.types';
+import { api } from '../../utils/api';
 
 interface DeepSummaryModalProps {
   document: Document;
@@ -19,6 +22,29 @@ interface DeepSummaryModalProps {
 
 export function DeepSummaryModal({ document, visible, onClose }: DeepSummaryModalProps) {
   const theme = useTheme();
+  const { addXP } = useUserStore();
+  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (visible && document.id) {
+      const fetchSummary = async () => {
+        setLoading(true);
+        try {
+          const result = await api.ai.summarize(document.id);
+          setSummary(result.summary);
+          if (result.xpAwarded) addXP(result.xpAwarded);
+        } catch (err: any) {
+          console.warn('Failed to fetch summary:', err.message);
+          setSummary("I couldn't generate a deep summary at this time. Please check your connection.");
+        } finally {
+          setLoading(false);
+        }
+      };
+      
+      fetchSummary();
+    }
+  }, [visible, document.id]);
 
   return (
     <Modal visible={visible} transparent animationType="slide">
@@ -39,34 +65,46 @@ export function DeepSummaryModal({ document, visible, onClose }: DeepSummaryModa
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-            <View style={[styles.section, { borderLeftColor: theme.primary }]}>
-               <Text style={[styles.sectionLabel, { color: theme.primary }]}>CORE CONCEPT</Text>
-               <Text style={[styles.sectionText, { color: theme.text, fontFamily: theme.fontFamily }]}>
-                 {document.title} covers the fundamental mechanisms of {document.subject}. The primary focus is on understanding how individual components interact to create a functional system.
-               </Text>
+          {loading ? (
+            <View style={styles.loadingContainer}>
+               <ActivityIndicator size="large" color={theme.primary} />
+               <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Condensing Document...</Text>
+               <Text style={[styles.loadingSub, { color: theme.textMuted }]}>LexiAid AI is identifying core concepts</Text>
             </View>
+          ) : (
+            <>
+              <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+                <View style={[styles.section, { borderLeftColor: theme.primary }]}>
+                   <Text style={[styles.sectionLabel, { color: theme.primary }]}>CORE CONCEPT</Text>
+                   <Text style={[styles.sectionText, { color: theme.text, fontFamily: theme.fontFamily }]}>
+                     {summary || (document.title + " summary is being processed.")}
+                   </Text>
+                </View>
 
-            <View style={[styles.section, { borderLeftColor: theme.accent }]}>
-               <Text style={[styles.sectionLabel, { color: theme.accent }]}>KEY TAKEAWAYS</Text>
-               <Text style={[styles.sectionText, { color: theme.text, fontFamily: theme.fontFamily }]}>
-                 • Complexity is broken down into manageable units.{"\n"}
-                 • Key terminology like {document.flashcards?.[0]?.back || 'specific terms'} is critical to mastery.{"\n"}
-                 • Practical application is shown through structural analysis.
-               </Text>
-            </View>
+                {document.flashcards && document.flashcards.length > 0 && (
+                  <View style={[styles.section, { borderLeftColor: theme.accent }]}>
+                    <Text style={[styles.sectionLabel, { color: theme.accent }]}>KEY TAKEAWAYS</Text>
+                    <Text style={[styles.sectionText, { color: theme.text, fontFamily: theme.fontFamily }]}>
+                      • Complexity is broken down into manageable units.{"\n"}
+                      • Key terminology like {document.flashcards[0].back} is critical to mastery.{"\n"}
+                      • Practical application is shown through structural analysis.
+                    </Text>
+                  </View>
+                )}
 
-            <View style={[styles.section, { borderLeftColor: theme.success }]}>
-               <Text style={[styles.sectionLabel, { color: theme.success }]}>SIMPLIFIED CONCLUSION</Text>
-               <Text style={[styles.sectionText, { color: theme.text, fontFamily: theme.fontFamily }]}>
-                 {document.simplifiedContent}
-               </Text>
-            </View>
-          </ScrollView>
+                <View style={[styles.section, { borderLeftColor: theme.success }]}>
+                   <Text style={[styles.sectionLabel, { color: theme.success }]}>SIMPLIFIED CONCLUSION</Text>
+                   <Text style={[styles.sectionText, { color: theme.text, fontFamily: theme.fontFamily }]}>
+                     {document.simplifiedContent || "Refer to the main summary for core takeaways."}
+                   </Text>
+                </View>
+              </ScrollView>
 
-          <TouchableOpacity onPress={onClose} style={[styles.finishBtn, { backgroundColor: theme.primary }]}>
-             <Text style={styles.finishBtnText}>Return to Reader</Text>
-          </TouchableOpacity>
+              <TouchableOpacity onPress={onClose} style={[styles.finishBtn, { backgroundColor: theme.primary }]}>
+                 <Text style={styles.finishBtnText}>Return to Reader</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </View>
     </Modal>
@@ -88,4 +126,8 @@ const styles = StyleSheet.create({
   sectionText: { fontSize: 15, lineHeight: 24 },
   finishBtn: { marginHorizontal: 24, height: 56, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   finishBtnText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
+  loadingText: { fontSize: 16, fontWeight: '800' },
+  loadingSub: { fontSize: 12, fontWeight: '600' },
 });
+

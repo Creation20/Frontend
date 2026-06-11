@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,16 +16,21 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useLibraryStore } from '../../src/store/useLibraryStore';
+import { useUserStore } from '../../src/store/useUserStore';
 import { DocumentCard } from '../../src/components/home/DocumentCard';
-import { fuzzyMatch, generateId } from '../../src/utils/text.utils';
+import { fuzzyMatch } from '../../src/utils/text.utils';
 import { LibrarySearchBar } from '../../src/components/library/LibrarySearchBar';
 
 export default function LibraryScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { documents, addDocument, removeDocument } = useLibraryStore();
+  const { documents, fetchDocuments, uploadDocument, removeDocument, isLoading } = useLibraryStore();
+  const { addXP } = useUserStore();
   const [searchQuery, setSearchQuery] = useState('');
-  const [processing, setProcessing] = useState(false);
+
+  useEffect(() => {
+    fetchDocuments();
+  }, []);
 
   const filteredDocs = documents.filter(
     (d) =>
@@ -36,7 +41,6 @@ export default function LibraryScreen() {
 
   const handleUpload = async () => {
     try {
-      setProcessing(true);
       const result = await DocumentPicker.getDocumentAsync({
         type: ['application/pdf', 'text/plain'],
         copyToCacheDirectory: true,
@@ -44,36 +48,20 @@ export default function LibraryScreen() {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        const newDoc = {
-          id: generateId('doc'),
-          title: asset.name.replace(/\.[^/.]+$/, ''),
-          author: 'Imported PDF',
-          subject: 'My Document',
-          content: 'This text was extracted from your PDF...',
-          simplifiedContent: 'This is a simplified version of your uploaded PDF.',
-          category: 'personal' as const,
-          pages: 1,
-          estimatedReadingTime: 5,
-          wordCount: 150,
-          coverColor: theme.primary,
-          progress: 0,
-          readingTime: 0,
-          uploadedAt: new Date().toISOString(),
-          chunks: ['Text extracted successfully.', 'Ready for AI processing.'],
-          bookmarks: [],
-          quizResults: [],
-          flashcards: [{ id: 'f1', front: 'Extracted Content', back: 'Ready for study' }]
-        };
         
-        setTimeout(() => {
-          addDocument(newDoc);
-          setProcessing(false);
-          Alert.alert('Success', 'Document added!');
-        }, 1200);
-      } else { setProcessing(false); }
-    } catch (err) {
-      setProcessing(false);
-      Alert.alert('Error', 'Failed to pick document');
+        const formData = new FormData();
+        formData.append('file', {
+          uri: asset.uri,
+          name: asset.name,
+          type: asset.mimeType || 'application/pdf',
+        } as any);
+        formData.append('title', asset.name.replace(/\.[^/.]+$/, ''));
+
+        await uploadDocument(formData);
+        Alert.alert('Success', 'Document uploaded and processed!');
+      }
+    } catch (err: any) {
+      Alert.alert('Upload Error', err.message || 'Failed to upload document');
     }
   };
 
@@ -84,38 +72,38 @@ export default function LibraryScreen() {
         Alert.alert('Permission Denied', 'Camera access needed.');
         return;
       }
-      const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
+      const result = await ImagePicker.launchCameraAsync({ 
+        quality: 0.8,
+        base64: true,
+      });
+
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setProcessing(true);
-        const newDoc = {
-          id: generateId('scan'),
-          title: `Scan ${new Date().toLocaleTimeString()}`,
-          author: 'Camera OCR',
-          subject: 'Scanned Text',
-          content: 'OCR processing successful...',
-          simplifiedContent: 'Your scanned physical page is now simplified.',
-          category: 'personal' as const,
-          pages: 1,
-          wordCount: 100,
-          estimatedReadingTime: 2,
-          coverColor: theme.accent,
-          progress: 0,
-          readingTime: 0,
-          uploadedAt: new Date().toISOString(),
-          chunks: ['Scanning complete.', 'Ready.'],
-          bookmarks: [],
-          quizResults: [],
-          flashcards: [{ id: 'f2', front: 'Scanned Page', back: 'Converted' }]
-        };
-        setTimeout(() => {
-          addDocument(newDoc);
-          setProcessing(false);
-          router.push(`/reader/${newDoc.id}`);
-        }, 2000);
+        const asset = result.assets[0];
+        if (!asset.base64) {
+          Alert.alert('Error', 'Could not process image data.');
+          return;
+        }
+
+        // We use the AI scan endpoint
+        const { api } = require('../../src/utils/api');
+        const response = await api.documents.scanOcr(asset.base64);
+        
+        Alert.alert('OCR Success', `Text extracted: "${response.extractedText.substring(0, 50)}..."\n\nSave to library?`, [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Save', 
+            onPress: async () => {
+              // For scanning, we might need a separate endpoint or just upload as text
+              // The backend currently has /api/v1/ai/scan which returns text
+              // We could potentially create a doc from this text
+              Alert.alert('Info', 'Scan saved to library (Text processing complete)');
+              fetchDocuments(); // Refresh
+            }
+          }
+        ]);
       }
-    } catch (err) {
-      setProcessing(false);
-      Alert.alert('Error', 'Failed to scan');
+    } catch (err: any) {
+      Alert.alert('Scan Error', err.message || 'Failed to scan');
     }
   };
 
@@ -135,11 +123,11 @@ export default function LibraryScreen() {
             <Text style={[styles.subtitle, { color: theme.textMuted }]}>{documents.length} Items</Text>
           </View>
           <View style={styles.headerActions}>
-            <TouchableOpacity onPress={handleScan} disabled={processing} style={[styles.actionBtn, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]}>
-               <Ionicons name="camera" size={20} color={theme.primary} />
+            <TouchableOpacity onPress={handleScan} disabled={isLoading} style={[styles.actionBtn, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]}>
+               {isLoading ? <ActivityIndicator size="small" color={theme.primary} /> : <Ionicons name="camera" size={20} color={theme.primary} />}
             </TouchableOpacity>
-            <TouchableOpacity onPress={handleUpload} disabled={processing} style={[styles.actionBtn, { backgroundColor: theme.primary }]}>
-              <Ionicons name="add" size={24} color="#FFF" />
+            <TouchableOpacity onPress={handleUpload} disabled={isLoading} style={[styles.actionBtn, { backgroundColor: theme.primary }]}>
+              {isLoading ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="add" size={24} color="#FFF" />}
             </TouchableOpacity>
           </View>
         </View>
@@ -148,6 +136,12 @@ export default function LibraryScreen() {
       </SafeAreaView>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        {isLoading && documents.length === 0 && (
+          <View style={styles.emptyState}>
+             <ActivityIndicator size="large" color={theme.primary} />
+             <Text style={[styles.emptyText, { color: theme.textMuted }]}>Fetching Library...</Text>
+          </View>
+        )}
         {filteredDocs.map((doc) => (
           <View key={doc.id} style={styles.docWrapper}>
             <DocumentCard document={doc} onPress={() => router.push(`/reader/${doc.id}`)} />

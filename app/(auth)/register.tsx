@@ -14,12 +14,15 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useUserStore } from '../../src/store/useUserStore';
 
 const { width } = Dimensions.get('window');
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const { register } = useUserStore();
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -27,21 +30,33 @@ export default function RegisterScreen() {
   const [error, setError] = useState('');
 
   const handleRegister = async () => {
-    if (!name.trim() || !email.trim() || !password.trim()) {
+    if (!name.trim() || !username.trim() || !email.trim() || !password.trim()) {
       setError('Please fill in all required fields.');
       return;
     }
+
+    // Username validation: lowercase letters, numbers, and underscores only
+    const usernameRegex = /^[a-z0-9_]+$/;
+    if (!usernameRegex.test(username)) {
+      setError('Username must be lowercase letters, numbers, or underscores only (no spaces).');
+      return;
+    }
+
     if (password.length < 6) {
       setError('Password must be at least 6 characters.');
       return;
     }
     setError('');
     setLoading(true);
-    // Mock register
-    setTimeout(() => {
-      setLoading(false);
+    
+    try {
+      await register(name, username, email, password);
       router.replace('/(auth)/diagnostic');
-    }, 1500);
+    } catch (err: any) {
+      setError(err.message || 'Registration failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -77,6 +92,13 @@ export default function RegisterScreen() {
             value={name}
             onChange={setName}
             placeholder="John Doe"
+          />
+          <Field
+            label="Username"
+            icon="at-outline"
+            value={username}
+            onChange={(t) => setUsername(t.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+            placeholder="john_read (lowercase/no spaces)"
           />
           <Field
             label="Email Address"

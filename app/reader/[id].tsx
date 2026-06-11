@@ -10,6 +10,7 @@ import {
   Share,
   PanResponder,
   Platform,
+  AppState,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -20,7 +21,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useLibraryStore } from '../../src/store/useLibraryStore';
 import { useReaderStore } from '../../src/store/useReaderStore';
+import { useUserStore } from '../../src/store/useUserStore';
 import { useSettingsStore } from '../../src/store/useSettingsStore';
+import { useAdaptiveFormatting } from '../../src/hooks/useAdaptiveFormatting';
 
 import { ReaderText } from '../../src/components/reader/ReaderText';
 import { FloatingToolbar } from '../../src/components/reader/FloatingToolbar';
@@ -30,7 +33,6 @@ import { DeepSummaryModal } from '../../src/components/modals/DeepSummaryModal';
 import { ComprehensionQuiz } from '../../src/components/modals/ComprehensionQuiz';
 import { WordTooltip } from '../../src/components/modals/WordTooltip';
 
-import { MOCK_QUIZZES } from '../../src/constants/mockData';
 import { chunkText } from '../../src/utils/text.utils';
 import { readerStyles as styles } from '../../src/components/reader/reader.styles';
 
@@ -40,15 +42,16 @@ const RULER_MIN_Y = 110;
 const RULER_MAX_Y = SCREEN_HEIGHT - 260;
 
 // Offsets that map ReaderText-local Y → screen Y
-const SCROLL_PADDING_TOP = 130;  // scrollContent paddingTop
-const NAV_ROW_HEIGHT     = 56;   // contentNav row height approx
-const BANNER_HEIGHT      = 0;    // simplified banner (0 when not shown)
-const CARD_PADDING_TOP   = 28;   // cardContainer padding
+const SCROLL_PADDING_TOP = 130;
+const NAV_ROW_HEIGHT     = 56;
+const CARD_PADDING_TOP   = 28;
 
 export default function ReaderScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router  = useRouter();
   const theme   = useTheme();
+  
+  useAdaptiveFormatting();
 
   const { settings, updateSetting } = useSettingsStore();
   const { getDocument, updateProgress, addBookmark } = useLibraryStore();
@@ -57,6 +60,7 @@ export default function ReaderScreen() {
     currentWordIndex,
     showSimplified,
     showQuiz,
+    currentQuiz,
     pendingQuizId,
     activeSound,
     isPlaying,
@@ -70,6 +74,11 @@ export default function ReaderScreen() {
     nextChunk,
     prevChunk,
     chunks: currentChunks,
+    pauseSession,
+    resumeSession,
+    recordInteraction,
+    lastInteractionTime,
+    isPaused,
   } = useReaderStore();
 
   const document      = getDocument(id);
@@ -92,39 +101,74 @@ export default function ReaderScreen() {
   const lastRulerY    = useRef(260);
   const [rulerMode, setRulerMode] = useState<'manual' | 'ai'>('manual');
 
-  // ── KEY FIX: word Y positions stored in a ref accessible to useEffect ────────
-  // ReaderText reports each word's local-Y via onWordLayout.
-  // We accumulate them here so the ruler-sync useEffect can look them up.
+  // Word Y positions: indexed by word index, stores screen-relative Y
   const wordYPositions = useRef<Record<number, number>>({});
+
+  // ── High Precision Active Reading ───────────────────────────────────────────
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (nextAppState === 'active') {
+        resumeSession();
+      } else {
+        pauseSession();
+      }
+    });
+
+    // Inactivity Check (60 seconds)
+    const inactivityInterval = setInterval(() => {
+      if (!isPaused && Date.now() - lastInteractionTime > 60000) {
+        pauseSession();
+      }
+    }, 5000);
+
+    return () => {
+      subscription.remove();
+      clearInterval(inactivityInterval);
+    };
+  }, [isPaused, lastInteractionTime]);
+
+  const handleInteraction = () => recordInteraction();
 
   // Called by ReaderText whenever a word's layout is known
   const handleWordLayout = useCallback((index: number, y: number) => {
     wordYPositions.current[index] = y;
-  }, []);
+    // If TTS is currently highlighting this word, move the ruler immediately
+    if (isPlaying && index === currentWordIndex) {
+      const screenY = SCROLL_PADDING_TOP + NAV_ROW_HEIGHT + CARD_PADDING_TOP + y;
+      const clamped = Math.max(RULER_MIN_Y, Math.min(RULER_MAX_Y, screenY));
+      Animated.spring(rulerY, {
+        toValue: clamped,
+        useNativeDriver: false,
+        friction: 10,
+        tension: 55,
+      }).start();
+      lastRulerY.current = clamped;
+    }
+  }, [isPlaying, currentWordIndex, rulerY]);
 
-  // ── RULER SYNC: driven by currentWordIndex + isPlaying ───────────────────────
-  // This is the correct place to move the ruler — NOT inside handleWordLayout
-  // which only fires on layout (mount), not on every word change during TTS.
+  // ── RULER SYNC: move ruler whenever currentWordIndex changes during TTS ───────
   useEffect(() => {
-    if (!isPlaying || currentWordIndex < 0) {
-      if (!isPlaying) setRulerMode('manual');
+    if (!isPlaying) {
+      setRulerMode('manual');
       return;
     }
 
-    const wordLocalY = wordYPositions.current[currentWordIndex];
-    if (wordLocalY === undefined) return;
+    if (currentWordIndex < 0) return;
 
     setRulerMode('ai');
 
-    // Convert ReaderText-local Y to absolute screen Y
+    // Try to get the stored position for this word
+    const wordLocalY = wordYPositions.current[currentWordIndex];
+    if (wordLocalY === undefined) return;
+
     const screenY = SCROLL_PADDING_TOP + NAV_ROW_HEIGHT + CARD_PADDING_TOP + wordLocalY;
     const clamped = Math.max(RULER_MIN_Y, Math.min(RULER_MAX_Y, screenY));
 
     Animated.spring(rulerY, {
-      toValue:        clamped,
+      toValue: clamped,
       useNativeDriver: false,
-      friction:       10,
-      tension:        55,
+      friction: 10,
+      tension: 55,
     }).start();
 
     lastRulerY.current = clamped;
@@ -133,7 +177,7 @@ export default function ReaderScreen() {
   // ── Manual ruler drag ────────────────────────────────────────────────────────
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponder: () => !isPlaying, // disable drag during AI sync
       onPanResponderGrant: () => setRulerMode('manual'),
       onPanResponderMove: (_, g) => {
         const newY = Math.max(RULER_MIN_Y, Math.min(RULER_MAX_Y, lastRulerY.current + g.dy));
@@ -145,15 +189,16 @@ export default function ReaderScreen() {
     })
   ).current;
 
-  // ── UI Toggle ────────────────────────────────────────────────────────────────
+  // ── UI Toggle — tap ANYWHERE ─────────────────────────────────────────────────
   const toggleUI = useCallback(() => {
+    handleInteraction();
     const next = !uiVisible;
     setUIVisible(next);
     Animated.spring(uiAnim, {
-      toValue:        next ? 1 : 0,
+      toValue: next ? 1 : 0,
       useNativeDriver: false,
-      friction:       9,
-      tension:        50,
+      friction: 9,
+      tension: 50,
     }).start();
 
     if (!next) {
@@ -198,15 +243,31 @@ export default function ReaderScreen() {
     const chunks = settings.chunkingEnabled
       ? chunkText(document.content, settings.chunkSize)
       : [document.content];
-    // Reset word positions when chunk/document changes
     wordYPositions.current = {};
     setCurrentDocument(document.id, chunks);
     startSession();
     return () => {
-      const elapsed = endSession();
-      if (elapsed > 5) {
+      const { elapsedSeconds, chunksRead } = endSession();
+      if (elapsedSeconds > 5 && document) {
         const newProgress = Math.min(100, Math.round(((currentChunkIndex + 1) / chunks.length) * 100));
-        updateProgress(document.id, newProgress, (document.readingTime || 0) + elapsed);
+        updateProgress(document.id, newProgress, elapsedSeconds);
+        
+        // --- WPM CALCULATION LOGIC ---
+        // 1. Get the text actually read (from start chunk to end chunk)
+        const startIndex = Math.min(useReaderStore.getState().sessionStartChunkIndex, currentChunkIndex);
+        const endIndex = Math.max(useReaderStore.getState().sessionStartChunkIndex, currentChunkIndex);
+        const readText = chunks.slice(startIndex, endIndex + 1).join(' ');
+        const wordCount = readText.trim().split(/\s+/).length;
+        
+        // 2. Calculate WPM (Words / Minutes)
+        const minutes = elapsedSeconds / 60;
+        const wpm = Math.round(wordCount / minutes);
+        
+        // 3. Update User Performance (only if significant reading happened)
+        if (wordCount > 10) {
+          useUserStore.getState().updatePerformance(wpm, 85); // 85% is a placeholder for baseline accuracy
+          useUserStore.getState().addXP(Math.floor(elapsedSeconds / 2)); // 1 XP for every 2 seconds of reading
+        }
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -245,7 +306,6 @@ export default function ReaderScreen() {
 
   const progress     = currentChunks.length > 0 ? Math.round(((currentChunkIndex + 1) / currentChunks.length) * 100) : 0;
   const rulerHeight  = settings.fontSize * settings.lineHeight + 20;
-  const currentQuiz  = MOCK_QUIZZES.find(q => q.id === pendingQuizId);
 
   const headerTranslateY = uiAnim.interpolate({ inputRange: [0,1], outputRange: [-140, 0] });
   const toolbarTranslateY= uiAnim.interpolate({ inputRange: [0,1], outputRange: [220,  0] });
@@ -253,45 +313,56 @@ export default function ReaderScreen() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <View style={[styles.root, { backgroundColor: theme.background }]}>
-
-      {/* SCROLLABLE CONTENT */}
+    // Outer tap target — entire screen toggles UI
+    <TouchableOpacity
+      activeOpacity={1}
+      onPress={toggleUI}
+      onPressIn={handleInteraction}
+      style={[styles.root, { backgroundColor: theme.background }]}
+    >
+      {/* SCROLLABLE CONTENT — stop propagation on scroll so swipes don't toggle */}
       <ScrollView
         ref={scrollViewRef}
-        onScrollBeginDrag={() => { if (settings.distractionFreeMode && uiVisible) toggleUI(); }}
+        onScroll={(e) => {
+          handleInteraction();
+        }}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        // Prevent scroll touches from bubbling to the outer TouchableOpacity toggle
+        onStartShouldSetResponder={() => false}
       >
         {/* Chunk Navigation */}
-        <View style={styles.contentNav}>
-          <TouchableOpacity
-            onPress={prevChunk}
-            disabled={currentChunkIndex === 0}
-            style={[styles.navButton, { backgroundColor: theme.surface, borderColor: theme.border, opacity: currentChunkIndex === 0 ? 0.35 : 1 }]}
-          >
-            <Ionicons name="chevron-back" size={16} color={theme.primary} />
-            <Text style={[styles.navButtonText, { color: theme.text }]}>Prev</Text>
-          </TouchableOpacity>
+        <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+          <View style={styles.contentNav}>
+            <TouchableOpacity
+              onPress={prevChunk}
+              disabled={currentChunkIndex === 0}
+              style={[styles.navButton, { backgroundColor: theme.surface, borderColor: theme.border, opacity: currentChunkIndex === 0 ? 0.35 : 1 }]}
+            >
+              <Ionicons name="chevron-back" size={16} color={theme.primary} />
+              <Text style={[styles.navButtonText, { color: theme.text }]}>Prev</Text>
+            </TouchableOpacity>
 
-          <View style={[styles.sectionInfo, { backgroundColor: theme.primaryLight }]}>
-            <Text style={[styles.sectionInfoText, { color: theme.primary }]}>
-              {currentChunkIndex + 1} / {currentChunks.length}
-            </Text>
+            <View style={[styles.sectionInfo, { backgroundColor: theme.primaryLight }]}>
+              <Text style={[styles.sectionInfoText, { color: theme.primary }]}>
+                {currentChunkIndex + 1} / {currentChunks.length}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={nextChunk}
+              disabled={currentChunkIndex >= currentChunks.length - 1}
+              style={[styles.navButton, { backgroundColor: theme.surface, borderColor: theme.border, opacity: currentChunkIndex >= currentChunks.length - 1 ? 0.35 : 1 }]}
+            >
+              <Text style={[styles.navButtonText, { color: theme.text }]}>Next</Text>
+              <Ionicons name="chevron-forward" size={16} color={theme.primary} />
+            </TouchableOpacity>
           </View>
+        </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={nextChunk}
-            disabled={currentChunkIndex >= currentChunks.length - 1}
-            style={[styles.navButton, { backgroundColor: theme.surface, borderColor: theme.border, opacity: currentChunkIndex >= currentChunks.length - 1 ? 0.35 : 1 }]}
-          >
-            <Text style={[styles.navButtonText, { color: theme.text }]}>Next</Text>
-            <Ionicons name="chevron-forward" size={16} color={theme.primary} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Tap wrapper */}
-        <TouchableOpacity activeOpacity={1} onPress={toggleUI}>
+        {/* Reading content — stop tap propagation on word press only */}
+        <View>
           {showSimplified && (
             <View style={[simplifiedBanner, { backgroundColor: theme.accent + '18', borderColor: theme.accent + '60' }]}>
               <MaterialCommunityIcons name="robot-outline" size={13} color={theme.accent} />
@@ -307,30 +378,34 @@ export default function ReaderScreen() {
             <ReaderText
               text={currentText}
               currentWordIndex={currentWordIndex}
-              onWordPress={(w, i) => setWordTooltip({ word: w, wordIndex: i })}
+              onWordPress={(w, i) => {
+                setWordTooltip({ word: w, wordIndex: i });
+              }}
               onWordLayout={handleWordLayout}
             />
           </View>
-        </TouchableOpacity>
+        </View>
 
         {/* Action Row */}
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            onPress={() => triggerQuiz(`quiz-${document.id}-1`)}
-            style={[styles.mainAction, { backgroundColor: theme.surface, borderColor: theme.border }]}
-          >
-            <MaterialCommunityIcons name="clipboard-check-outline" size={20} color={theme.primary} />
-            <Text style={[styles.mainActionText, { color: theme.text }]}>Quick Quiz</Text>
-          </TouchableOpacity>
+        <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              onPress={() => triggerQuiz(document.id)}
+              style={[styles.mainAction, { backgroundColor: theme.surface, borderColor: theme.border }]}
+            >
+              <MaterialCommunityIcons name="clipboard-check-outline" size={20} color={theme.primary} />
+              <Text style={[styles.mainActionText, { color: theme.text }]}>Quick Quiz</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={() => setFlashcardsVisible(true)}
-            style={[styles.mainAction, { backgroundColor: theme.primaryLight, borderColor: theme.primary + '40' }]}
-          >
-            <MaterialCommunityIcons name="cards-outline" size={20} color={theme.primary} />
-            <Text style={[styles.mainActionText, { color: theme.primary }]}>Flashcards</Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              onPress={() => setFlashcardsVisible(true)}
+              style={[styles.mainAction, { backgroundColor: theme.primaryLight, borderColor: theme.primary + '40' }]}
+            >
+              <MaterialCommunityIcons name="cards-outline" size={20} color={theme.primary} />
+              <Text style={[styles.mainActionText, { color: theme.primary }]}>Flashcards</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
       </ScrollView>
 
       {/* FOCUS RULER (Layer 10) */}
@@ -352,29 +427,20 @@ export default function ReaderScreen() {
             }]}
             pointerEvents="box-none"
           >
-            {/* Mode indicator */}
-            <View style={styles.rulerLabel} pointerEvents="none">
-              <MaterialCommunityIcons
-                name={rulerMode === 'ai' ? 'robot-outline' : 'drag-horizontal-variant'}
-                size={10}
-                color={rulerMode === 'ai' ? theme.accent : theme.primary}
-              />
-              <Text style={[styles.rulerLabelText, { color: rulerMode === 'ai' ? theme.accent : theme.primary }]}>
-                {rulerMode === 'ai' ? 'AI Sync' : 'Manual'}
-              </Text>
-            </View>
+            {/* Drag handle — only visible and draggable in manual mode */}
+            {rulerMode !== 'ai' && (
+              <View
+                {...panResponder.panHandlers}
+                style={[styles.rulerHandle, { backgroundColor: theme.primary }]}
+              >
+                {/* No icon inside — clean handle */}
+              </View>
+            )}
 
-            {/* Drag handle */}
-            <View
-              {...(rulerMode !== 'ai' ? panResponder.panHandlers : {})}
-              style={[styles.rulerHandle, { backgroundColor: rulerMode === 'ai' ? theme.accent : theme.primary }]}
-            >
-              <MaterialCommunityIcons
-                name={rulerMode === 'ai' ? 'lock-outline' : 'drag-vertical'}
-                size={20}
-                color="#FFF"
-              />
-            </View>
+            {/* AI sync indicator dot — minimal, no text */}
+            {rulerMode === 'ai' && (
+              <View style={[styles.rulerAiDot, { backgroundColor: theme.accent }]} pointerEvents="none" />
+            )}
           </Animated.View>
         </Animated.View>
       )}
@@ -442,7 +508,7 @@ export default function ReaderScreen() {
         />
       </Animated.View>
 
-      {/* AI FAB (Layer 30) */}
+      {/* AI FAB (Layer 30) — moved higher to avoid toolbar overlap */}
       <Animated.View
         pointerEvents={uiVisible ? 'auto' : 'none'}
         style={[styles.assistantFloating, { backgroundColor: theme.primary, shadowColor: theme.primary, transform: [{ scale: fabScale }] }]}
@@ -454,7 +520,7 @@ export default function ReaderScreen() {
       </Animated.View>
 
       {/* Distraction-free hint */}
-      {settings.distractionFreeMode && !uiVisible && (
+      {!uiVisible && (
         <Animated.View pointerEvents="none" style={[styles.tapHint, { backgroundColor: 'rgba(0,0,0,0.55)', opacity: hintAnim }]}>
           <Ionicons name="tap-outline" size={14} color="#FFF" />
           <Text style={[styles.tapHintText, { color: '#FFF' }]}>Tap to show controls</Text>
@@ -476,7 +542,7 @@ export default function ReaderScreen() {
           onBookmark={(bm) => { addBookmark(document.id, bm); setWordTooltip(null); }}
         />
       )}
-    </View>
+    </TouchableOpacity>
   );
 }
 

@@ -18,7 +18,7 @@ export const readerStyles = StyleSheet.create({
   // ─── LAYER 5: SCROLLABLE CONTENT ────────────────────────────────────────────
   scrollContent: {
     paddingTop: 130,
-    paddingBottom: 200,
+    paddingBottom: 240,
     paddingHorizontal: 20,
     gap: 16,
   },
@@ -108,13 +108,14 @@ export const readerStyles = StyleSheet.create({
     borderBottomWidth: 2,
     justifyContent: 'center',
   },
+  // Clean drag handle — no icon, just a pill
   rulerHandle: {
     position: 'absolute',
     right: 0,
-    width: 44,
-    height: 60,
-    borderTopLeftRadius: 14,
-    borderBottomLeftRadius: 14,
+    width: 36,
+    height: 48,
+    borderTopLeftRadius: 12,
+    borderBottomLeftRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 8,
@@ -122,22 +123,16 @@ export const readerStyles = StyleSheet.create({
     shadowOffset: { width: -2, height: 0 },
     shadowOpacity: 0.15,
     shadowRadius: 6,
+    opacity: 0.6,
   },
-  rulerLabel: {
+  // Small pulsing dot shown during AI sync
+  rulerAiDot: {
     position: 'absolute',
-    left: 16,
-    top: '50%',
-    marginTop: -8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    opacity: 0.4,
-  },
-  rulerLabelText: {
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
+    right: 16,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    opacity: 0.8,
   },
 
   // ─── LAYER 20: FIXED HEADER ─────────────────────────────────────────────────
@@ -232,13 +227,14 @@ export const readerStyles = StyleSheet.create({
   },
 
   // ─── LAYER 30: AI FAB ────────────────────────────────────────────────────────
+  // Moved to bottom: 200 (was 130) so it sits above the toolbar without overlap
   assistantFloating: {
     position: 'absolute',
-    bottom: 130,
+    bottom: 200,
     right: 20,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 30,
@@ -249,9 +245,9 @@ export const readerStyles = StyleSheet.create({
   },
   assistantRing: {
     position: 'absolute',
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     borderWidth: 2,
     opacity: 0.3,
   },
