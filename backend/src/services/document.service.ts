@@ -1,7 +1,6 @@
 import { MultipartFile } from '@fastify/multipart';
 import pdf from 'pdf-parse';
 import * as fs from 'fs';
-import * as path from 'path';
 import { prisma } from '../lib/prisma';
 import { AiService } from './ai.service';
 import { chunkText, countWords, estimateReadingTime } from '../utils/chunker';
@@ -21,6 +20,7 @@ const COVER_COLORS = [
 export const DocumentService = {
   /**
    * Process and store an uploaded PDF or TXT file.
+   * AI processing failures are isolated — the upload still succeeds.
    */
   async uploadDocument(
     userId: string,
@@ -39,8 +39,12 @@ export const DocumentService = {
     let rawContent = '';
 
     if (isPdf) {
-      const parsed = await pdf(fileBuffer);
-      rawContent = parsed.text;
+      try {
+        const parsed = await pdf(fileBuffer);
+        rawContent = parsed.text;
+      } catch (err: any) {
+        throw new ValidationError(`Could not read PDF file: ${err.message}`);
+      }
     } else {
       rawContent = fileBuffer.toString('utf-8');
     }
@@ -49,11 +53,29 @@ export const DocumentService = {
       throw new ValidationError('The uploaded file appears to be empty or unreadable.');
     }
 
-    // AI-powered processing
-    const [simplifiedContent, flashcards] = await Promise.all([
+    // AI processing — each step is isolated so a single failure doesn't
+    // block the entire upload. We use Promise.allSettled for parallel execution.
+    const [simplifiedResult, flashcardsResult] = await Promise.allSettled([
       AiService.simplifyText(rawContent.substring(0, 3000)),
       AiService.generateFlashcards(rawContent, metadata.title ?? file.filename),
     ]);
+
+    const simplifiedContent =
+      simplifiedResult.status === 'fulfilled'
+        ? simplifiedResult.value
+        : rawContent.substring(0, 1000); // fallback: first 1000 chars of original
+
+    const flashcards =
+      flashcardsResult.status === 'fulfilled'
+        ? flashcardsResult.value
+        : []; // fallback: empty flashcards
+
+    if (simplifiedResult.status === 'rejected') {
+      console.warn('[DocumentService] AI simplification failed during upload:', simplifiedResult.reason?.message);
+    }
+    if (flashcardsResult.status === 'rejected') {
+      console.warn('[DocumentService] AI flashcard generation failed during upload:', flashcardsResult.reason?.message);
+    }
 
     const chunks = chunkText(rawContent, 'medium');
     const wordCount = countWords(rawContent);
@@ -69,7 +91,7 @@ export const DocumentService = {
         category: (metadata.category as any) ?? 'article',
         content: rawContent,
         simplifiedContent,
-        chunks,
+        chunks: chunks as any,
         flashcards: flashcards as any,
         wordCount,
         pages: isPdf ? Math.ceil(wordCount / 300) : 0,
@@ -114,7 +136,7 @@ export const DocumentService = {
         readingTime: true,
         uploadedAt: true,
         lastReadAt: true,
-        // Exclude heavy fields from list view
+        // Exclude heavy content fields from list view
         content: false,
         simplifiedContent: false,
         chunks: false,
@@ -159,10 +181,24 @@ export const DocumentService = {
   },
 
   /**
+   * Rename a document.
+   */
+  async renameDocument(documentId: string, userId: string, newTitle: string) {
+    await DocumentService.getDocument(documentId, userId);
+
+    if (!newTitle.trim()) throw new ValidationError('Title cannot be empty.');
+
+    return prisma.document.update({
+      where: { id: documentId },
+      data: { title: newTitle.trim() },
+    });
+  },
+
+  /**
    * Soft delete a document.
    */
   async deleteDocument(documentId: string, userId: string) {
-    await DocumentService.getDocument(documentId, userId); // validates ownership
+    await DocumentService.getDocument(documentId, userId);
 
     await prisma.document.update({
       where: { id: documentId },
@@ -201,7 +237,6 @@ export const DocumentService = {
       if (existing) return existing;
     }
 
-    // Generate new quiz from a representative chunk
     const chunks = doc.chunks as string[];
     const midChunk = chunks[Math.floor(chunks.length / 2)] ?? doc.content.substring(0, 800);
 

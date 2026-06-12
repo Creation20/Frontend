@@ -6,6 +6,7 @@ export function chunkText(
   text: string,
   chunkSize: 'small' | 'medium' | 'large'
 ): string[] {
+  if (!text) return [];
   const sentencesPerChunk = { small: 1, medium: 2, large: 3 }[chunkSize];
   // Split on sentence-ending punctuation
   const sentences = text

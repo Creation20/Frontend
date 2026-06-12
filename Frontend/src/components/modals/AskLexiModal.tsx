@@ -15,6 +15,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../hooks/useTheme';
 import { useReaderStore, ChatMessage } from '../../store/useReaderStore';
 import { api } from '../../utils/api';
+import { ReaderText } from '../reader/ReaderText';
 
 export function AskLexiModal() {
   const theme = useTheme();
@@ -33,7 +34,7 @@ export function AskLexiModal() {
     setIsTyping(true);
 
     try {
-      // Prepare history for API (map role names if necessary)
+      // Prepare history for API
       const history = chatMessages.map(m => ({
         role: m.role === 'user' ? 'user' : 'model',
         text: m.text
@@ -154,16 +155,21 @@ function MessageItem({ message, theme }: { message: ChatMessage; theme: any }) {
         style={[
           styles.msgBubble,
           {
-            backgroundColor: isUser ? theme.primary : theme.surfaceElevated,
-            borderBottomRightRadius: isUser ? 4 : 16,
-            borderBottomLeftRadius: isUser ? 16 : 4,
+            backgroundColor: isUser ? theme.primary : theme.background,
+            borderColor: theme.border,
+            borderWidth: isUser ? 0 : 1,
+            borderBottomRightRadius: isUser ? 4 : 20,
+            borderBottomLeftRadius: isUser ? 20 : 4,
           },
-          !isUser && { borderWidth: 1, borderColor: theme.border }
         ]}
       >
-        <Text style={[styles.msgText, { color: isUser ? '#FFF' : theme.text }]}>
-          {message.text}
-        </Text>
+        {isUser ? (
+          <Text style={[styles.msgText, { color: '#FFF', fontFamily: theme.fontFamily }]}>
+            {message.text}
+          </Text>
+        ) : (
+          <ReaderText text={message.text} currentWordIndex={-1} />
+        )}
       </View>
     </View>
   );
@@ -171,27 +177,50 @@ function MessageItem({ message, theme }: { message: ChatMessage; theme: any }) {
 
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end' },
-  container: { width: '100%', height: '80%' },
+  container: { width: '100%', height: '85%' },
   modal: { flex: 1, borderTopLeftRadius: 32, borderTopRightRadius: 32, borderWidth: 1, borderBottomWidth: 0, paddingBottom: Platform.OS === 'ios' ? 40 : 20 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   aiIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 18, fontWeight: '800' },
-  subtitle: { fontSize: 12 },
+  title: { fontSize: 18, fontWeight: '900' },
+  subtitle: { fontSize: 12, fontWeight: '600' },
   closeBtn: { padding: 4 },
   chatArea: { flex: 1 },
   chatContent: { padding: 20, gap: 16 },
-  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 100, gap: 16 },
-  emptyText: { textAlign: 'center', fontSize: 14, lineHeight: 20 },
-  msgWrapper: { flexDirection: 'row', gap: 8, maxWidth: '85%' },
+  msgWrapper: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, maxWidth: '85%' },
   msgUser: { alignSelf: 'flex-end', flexDirection: 'row-reverse' },
   msgAI: { alignSelf: 'flex-start' },
-  msgAvatar: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
-  msgBubble: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16 },
+  msgAvatar: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  msgBubble: { padding: 12, paddingHorizontal: 16, borderRadius: 20 },
   msgText: { fontSize: 15, lineHeight: 22 },
-  typingIndicator: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 36 },
-  typingText: { fontSize: 13, fontStyle: 'italic' },
-  inputRow: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12, borderTopWidth: 1 },
-  input: { flex: 1, borderRadius: 20, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 10, maxHeight: 100, fontSize: 15 },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    paddingBottom: Platform.OS === 'ios' ? 32 : 16,
+    gap: 12,
+    borderTopWidth: 1,
+  },
+  input: {
+    flex: 1,
+    minHeight: 44,
+    maxHeight: 120,
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderWidth: 1,
+    fontSize: 15,
+  },
   sendBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  emptyState: { alignItems: 'center', justifyContent: 'center', marginTop: 100, gap: 16 },
+  emptyText: { textAlign: 'center', fontSize: 15, lineHeight: 24, fontWeight: '600' },
+  typingIndicator: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 36 },
+  typingText: { fontSize: 12, fontStyle: 'italic', fontWeight: '600' },
 });

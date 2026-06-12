@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,8 +9,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import * as Speech from 'expo-speech';
+import { Audio } from 'expo-av';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../hooks/useTheme';
 import { Bookmark } from '../../types/document.types';
@@ -82,7 +84,9 @@ export function WordTooltip({
   const [note, setNote] = useState('');
   const [showBookmarkNote, setShowBookmarkNote] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
-  const [practiceStatus, setPracticeStatus] = useState<'idle' | 'listening' | 'success'>('idle');
+  const [practiceStatus, setPracticeStatus] = useState<'idle' | 'listening' | 'evaluating' | 'success' | 'failure'>('idle');
+  const [practiceFeedback, setPracticeFeedback] = useState<string | null>(null);
+  const recordingRef = useRef<Audio.Recording | null>(null);
   
   const [loading, setLoading] = useState(false);
   const [definition, setDefinition] = useState<DefinitionData | null>(null);
@@ -125,16 +129,77 @@ export function WordTooltip({
     Speech.speak(word, { rate: 0.8, pitch: 1.0 });
   };
 
-  const handlePractice = () => {
-    setPracticeStatus('listening');
-    // Simulate real-time pronunciation feedback
-    setTimeout(() => {
-      setPracticeStatus('success');
-      addXP(25); // Award XP for pronunciation practice
+  const handlePractice = async () => {
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (permission.status !== 'granted') {
+        Alert.alert('Permission Denied', 'Mic access needed for pronunciation coach.');
+        return;
+      }
+
+      setPracticeStatus('listening');
+      setPracticeFeedback(null);
+      
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      const recording = new Audio.Recording();
+      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      await recording.startAsync();
+      recordingRef.current = recording;
+
+      // Record for 3 seconds then auto-evaluate
+      setTimeout(async () => {
+        if (recordingRef.current) {
+          await stopAndEvaluate();
+        }
+      }, 3500);
+
+    } catch (err: any) {
+      console.warn('Recording error:', err.message);
+      setPracticeStatus('idle');
+    }
+  };
+
+  const stopAndEvaluate = async () => {
+    if (!recordingRef.current) return;
+    
+    setPracticeStatus('evaluating');
+    try {
+      await recordingRef.current.stopAndUnloadAsync();
+      const uri = recordingRef.current.getURI();
+      recordingRef.current = null;
+
+      if (!uri) throw new Error('No recording URI');
+
+      const formData = new FormData();
+      formData.append('file', {
+        uri,
+        name: 'recording.m4a',
+        type: 'audio/m4a',
+      } as any);
+      formData.append('word', word);
+
+      const result = await api.ai.verifyPronunciation(formData);
+      
+      if (result.isCorrect) {
+        setPracticeStatus('success');
+        addXP(25);
+      } else {
+        setPracticeStatus('failure');
+      }
+      setPracticeFeedback(result.feedback);
+
       setTimeout(() => {
         setPracticeStatus('idle');
-      }, 2000);
-    }, 2000);
+      }, 4000);
+
+    } catch (err: any) {
+      console.warn('Evaluation error:', err.message);
+      setPracticeStatus('idle');
+    }
   };
 
   const handleBookmark = () => {
@@ -215,18 +280,18 @@ export function WordTooltip({
                         style={[
                           styles.micBtn, 
                           { 
-                            backgroundColor: practiceStatus === 'listening' ? theme.accent : theme.primaryLight,
-                            borderColor: practiceStatus === 'success' ? '#10B981' : theme.primary + '20'
+                            backgroundColor: (practiceStatus === 'listening' || practiceStatus === 'evaluating') ? theme.accent : theme.primaryLight,
+                            borderColor: practiceStatus === 'success' ? '#10B981' : (practiceStatus === 'failure' ? '#EF4444' : theme.primary + '20')
                           }
                         ]}
                     >
-                      {practiceStatus === 'listening' ? (
+                      {practiceStatus === 'listening' || practiceStatus === 'evaluating' ? (
                         <ActivityIndicator color="#FFF" size="small" />
                       ) : (
                         <Ionicons 
-                            name={practiceStatus === 'success' ? "checkmark-circle" : "mic"} 
+                            name={practiceStatus === 'success' ? "checkmark-circle" : (practiceStatus === 'failure' ? "close-circle" : "mic")} 
                             size={24} 
-                            color={practiceStatus === 'success' ? '#10B981' : theme.primary} 
+                            color={practiceStatus === 'success' ? '#10B981' : (practiceStatus === 'failure' ? '#EF4444' : theme.primary)} 
                         />
                       )}
                     </TouchableOpacity>
@@ -235,8 +300,13 @@ export function WordTooltip({
                         <Text style={[styles.statusText, { color: theme.text }]}>
                           {practiceStatus === 'idle' && 'Tap to practice speaking'}
                           {practiceStatus === 'listening' && 'Listening...'}
+                          {practiceStatus === 'evaluating' && 'Lexi is listening...'}
                           {practiceStatus === 'success' && 'Perfect Pronunciation!'}
+                          {practiceStatus === 'failure' && 'Almost there!'}
                         </Text>
+                        {(practiceStatus === 'success' || practiceStatus === 'failure') && practiceFeedback && (
+                          <Text style={[styles.tipsText, { color: theme.textSecondary, fontWeight: '600' }]}>{practiceFeedback}</Text>
+                        )}
                         {practiceStatus === 'success' && (
                           <Text style={[styles.xpText, { color: theme.accent }]}>+25 XP Earned</Text>
                         )}

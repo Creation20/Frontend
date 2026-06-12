@@ -9,8 +9,10 @@ interface LibraryStore {
   isLoading: boolean;
   error: string | null;
   fetchDocuments: (search?: string) => Promise<void>;
+  fetchDocumentDetail: (id: string) => Promise<Document>;
   uploadDocument: (formData: FormData) => Promise<void>;
   removeDocument: (id: string) => Promise<void>;
+  renameDocument: (id: string, newTitle: string) => Promise<void>;
   getDocument: (id: string) => Document | undefined;
   updateProgress: (id: string, progress: number, additionalSeconds: number) => Promise<void>;
   addBookmark: (id: string, bookmark: any) => Promise<void>;
@@ -31,6 +33,23 @@ export const useLibraryStore = create<LibraryStore>()(
           set({ documents: docs, isLoading: false });
         } catch (err: any) {
           set({ error: err.message, isLoading: false });
+        }
+      },
+
+      fetchDocumentDetail: async (id) => {
+        set({ isLoading: true, error: null });
+        try {
+          const doc = await api.documents.get(id);
+          set((state) => ({
+            documents: state.documents.some(d => d.id === id)
+              ? state.documents.map(d => d.id === id ? doc : d)
+              : [doc, ...state.documents],
+            isLoading: false
+          }));
+          return doc;
+        } catch (err: any) {
+          set({ error: err.message, isLoading: false });
+          throw err;
         }
       },
 
@@ -56,6 +75,25 @@ export const useLibraryStore = create<LibraryStore>()(
           }));
         } catch (err: any) {
           console.error('Failed to delete document:', err.message);
+        }
+      },
+
+      renameDocument: async (id, newTitle) => {
+        // Optimistic update
+        const previousDocs = get().documents;
+        set((state) => ({
+          documents: state.documents.map((d) =>
+            d.id === id ? { ...d, title: newTitle } : d
+          ),
+        }));
+
+        try {
+          await api.documents.rename(id, newTitle);
+        } catch (err: any) {
+          console.error('Failed to rename document:', err.message);
+          // Rollback on error
+          set({ documents: previousDocs });
+          throw err;
         }
       },
 

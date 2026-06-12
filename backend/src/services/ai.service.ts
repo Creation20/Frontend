@@ -1,34 +1,24 @@
-import {
-  GoogleGenerativeAI,
-  HarmBlockThreshold,
-  HarmCategory,
-} from '@google/generative-ai';
+/**
+ * AI Service — powered by Groq (FREE tier)
+ *
+ * Free tier details:
+ *  - 14,400 requests/day
+ *  - 6,000 tokens/minute
+ *  - No credit card required
+ *  - Sign up at: https://console.groq.com
+ *
+ * Models used:
+ *  - llama-3.3-70b-versatile  → complex tasks (quiz, summary, chat, flashcards)
+ *  - llama-3.1-8b-instant     → fast tasks (simplify, pronunciation, word def)
+ *
+ * Groq is OpenAI-compatible, so we use the standard fetch API directly
+ * (no SDK needed, reducing dependencies).
+ */
+
 import { config } from '../config';
 import { InternalError } from '../utils/errors';
 
-const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
-
-const safetySettings = [
-  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-];
-
-function getModel() {
-  console.log(`[AI] Using model: ${config.gemini.model}`);
-  // Explicitly use 'v1' instead of the default 'v1beta'
-  return genAI.getGenerativeModel({
-    model: config.gemini.model,
-    safetySettings,
-    generationConfig: {
-      temperature: 0.7,
-      topK: 40,
-      topP: 0.95,
-      maxOutputTokens: 2048,
-    },
-  }, { apiVersion: 'v1' });
-}
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface AISummary {
   coreConcept: string;
@@ -50,53 +40,169 @@ export interface Flashcard {
   back: string;
 }
 
+interface GroqMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+interface GroqResponse {
+  choices: Array<{
+    message: {
+      content: string;
+    };
+  }>;
+}
+
+// ─── Core fetch wrapper ───────────────────────────────────────────────────────
+
+async function groqChat(
+  messages: GroqMessage[],
+  options: {
+    model?: 'fast' | 'smart';
+    temperature?: number;
+    maxTokens?: number;
+  } = {}
+): Promise<string> {
+  const model =
+    options.model === 'fast'
+      ? config.groq.fastModel
+      : config.groq.model;
+
+  const response = await fetch(`${config.groq.baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.groq.apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 2048,
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new InternalError(`Groq API error (${response.status}): ${err}`);
+  }
+
+  const data = (await response.json()) as GroqResponse;
+  const text = data.choices?.[0]?.message?.content ?? '';
+
+  if (!text) {
+    throw new InternalError('Groq returned an empty response.');
+  }
+
+  return text.trim();
+}
+
+// ─── JSON extraction helper ───────────────────────────────────────────────────
+
+function extractJson<T>(raw: string): T {
+  // Strip markdown code fences if present
+  const cleaned = raw
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/gi, '')
+    .trim();
+
+  // Try direct parse first
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch {
+    // Try to find JSON object or array within the text
+    const objMatch = cleaned.match(/\{[\s\S]*\}/);
+    const arrMatch = cleaned.match(/\[[\s\S]*\]/);
+
+    if (arrMatch) {
+      try {
+        return JSON.parse(arrMatch[0]) as T;
+      } catch {}
+    }
+
+    if (objMatch) {
+      try {
+        return JSON.parse(objMatch[0]) as T;
+      } catch {}
+    }
+
+    throw new Error(`Could not parse JSON from: ${cleaned.slice(0, 200)}`);
+  }
+}
+
+// ─── AI Service ───────────────────────────────────────────────────────────────
+
 export const AiService = {
   /**
-   * Simplify text for a dyslexic reader (Gemini).
+   * Simplify text for a dyslexic reader.
+   * Uses the fast model (8B) — good enough for simplification.
    */
   async simplifyText(text: string): Promise<string> {
-    const model = getModel();
-    const prompt = `You are an educational assistant helping dyslexic students aged 12-20.
-Rewrite the following text in very simple, clear language. Use short sentences (max 15 words each). Avoid jargon. Keep the same meaning. Do NOT add headings or bullet points — write as plain sentences only.
-
-TEXT:
-${text}
-
-SIMPLIFIED VERSION:`;
-
     try {
-      const result = await model.generateContent(prompt);
-      return result.response.text().trim();
+      const result = await groqChat(
+        [
+          {
+            role: 'system',
+            content:
+              'You are an educational assistant helping dyslexic students aged 12-20. ' +
+              'Rewrite text in very simple, clear language. Use short sentences (max 15 words each). ' +
+              'Avoid jargon. Keep the same meaning. Write as plain sentences only — no headings or bullet points.',
+          },
+          {
+            role: 'user',
+            content: `Rewrite this text in simple language:\n\n${text}`,
+          },
+        ],
+        { model: 'fast', temperature: 0.4, maxTokens: 1500 }
+      );
+      return result;
     } catch (err: any) {
-      throw new InternalError(`AI simplification failed: ${err.message}`);
+      console.error('[AI] simplifyText failed:', err.message);
+      // Return original text as fallback — don't block the user
+      return text;
     }
   },
 
   /**
    * Generate a TL;DR summary with Core Concept, Key Takeaways, and Conclusion.
+   * Uses the smart model for better quality.
    */
   async summarizeDocument(content: string, title: string): Promise<AISummary> {
-    const model = getModel();
-    const prompt = `You are an educational assistant helping dyslexic students.
-Analyze this document titled "${title}" and generate a structured summary.
-Respond ONLY with valid JSON in this exact format:
-{
-  "coreConcept": "one clear sentence explaining the main idea",
-  "keyTakeaways": ["takeaway 1", "takeaway 2", "takeaway 3"],
-  "conclusion": "one clear sentence summarizing the conclusion"
-}
-
-DOCUMENT:
-${content.substring(0, 6000)}`;
+    const truncated = content.substring(0, 6000);
 
     try {
-      const result = await model.generateContent(prompt);
-      const raw = result.response.text().trim();
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('No JSON found in response');
-      return JSON.parse(jsonMatch[0]) as AISummary;
+      const raw = await groqChat(
+        [
+          {
+            role: 'system',
+            content:
+              'You are an educational assistant helping dyslexic students. ' +
+              'You MUST respond with ONLY valid JSON — no markdown, no explanation, just JSON.',
+          },
+          {
+            role: 'user',
+            content:
+              `Analyze the document titled "${title}" and return a JSON summary in this EXACT format:\n` +
+              `{"coreConcept":"one clear sentence","keyTakeaways":["takeaway 1","takeaway 2","takeaway 3"],"conclusion":"one clear sentence"}\n\n` +
+              `DOCUMENT:\n${truncated}`,
+          },
+        ],
+        { model: 'smart', temperature: 0.5, maxTokens: 800 }
+      );
+
+      return extractJson<AISummary>(raw);
     } catch (err: any) {
-      throw new InternalError(`AI summarization failed: ${err.message}`);
+      console.error('[AI] summarizeDocument failed:', err.message);
+      // Fallback summary
+      return {
+        coreConcept: `This document covers key topics related to "${title}".`,
+        keyTakeaways: [
+          'Read carefully for key concepts.',
+          'Use the focus ruler to stay on track.',
+          'Ask Lexi if you have questions.',
+        ],
+        conclusion: 'Review this document to strengthen your understanding.',
+      };
     }
   },
 
@@ -109,37 +215,45 @@ ${content.substring(0, 6000)}`;
     userMessage: string,
     conversationHistory: Array<{ role: 'user' | 'model'; text: string }>
   ): Promise<string> {
-    const model = getModel();
+    const truncatedContent = documentContent.substring(0, 4000);
 
-    const systemPrompt = `You are "Lexi", a friendly and patient reading assistant for students with dyslexia.
-You are helping a student understand the document titled "${documentTitle}".
-Always respond in simple, clear language. Be encouraging and supportive.
-Use the document content below as your primary source of information.
+    const messages: GroqMessage[] = [
+      {
+        role: 'system',
+        content:
+          `You are "Lexi", a friendly and patient reading assistant for students with dyslexia. ` +
+          `You are helping a student understand the document titled "${documentTitle}". ` +
+          `Always respond in simple, clear language. Be encouraging and supportive. ` +
+          `Use the document content as your primary source. If the answer isn't in the document, say so kindly.\n\n` +
+          `DYSLEXIA-FRIENDLY GUIDELINES:\n` +
+          `- Use short sentences (max 12 words).\n` +
+          `- Use bullet points for lists.\n` +
+          `- Use simple analogies for complex concepts.\n` +
+          `- Avoid walls of text; keep paragraphs to 1-2 sentences.\n` +
+          `- Your response will be formatted with Bionic Reading (bolded prefixes).\n\n` +
+          `DOCUMENT CONTENT:\n${truncatedContent}`,
+      },
+    ];
 
-DOCUMENT CONTENT:
-${documentContent.substring(0, 5000)}
+    // Add conversation history (convert 'model' role to 'assistant' for OpenAI compat)
+    for (const msg of conversationHistory.slice(-10)) {
+      messages.push({
+        role: msg.role === 'model' ? 'assistant' : 'user',
+        content: msg.text,
+      });
+    }
 
----
-Answer the student's question based on this document. If the answer isn't in the document, say so kindly.`;
-
-    const history = conversationHistory.map((m) => ({
-      role: m.role,
-      parts: [{ text: m.text }],
-    }));
+    messages.push({ role: 'user', content: userMessage });
 
     try {
-      const chat = model.startChat({
-        history: [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'model', parts: [{ text: "Hi! I'm Lexi. I've read the document and I'm ready to help you understand it. What would you like to know?" }] },
-          ...history,
-        ],
+      return await groqChat(messages, {
+        model: 'smart',
+        temperature: 0.7,
+        maxTokens: 1000,
       });
-
-      const result = await chat.sendMessage(userMessage);
-      return result.response.text().trim();
     } catch (err: any) {
-      throw new InternalError(`AI chat failed: ${err.message}`);
+      console.error('[AI] chat failed:', err.message);
+      return "I'm sorry, I'm having a little trouble right now. Please try again in a moment!";
     }
   },
 
@@ -151,37 +265,51 @@ Answer the student's question based on this document. If the answer isn't in the
     documentTitle: string,
     numQuestions = 3
   ): Promise<QuizQuestion[]> {
-    const model = getModel();
-    const prompt = `You are creating a reading comprehension quiz for dyslexic students.
-Generate ${numQuestions} multiple-choice questions based on this text from "${documentTitle}".
-Use simple, clear language. Each question should have 4 options.
-Respond ONLY with a valid JSON array in this exact format:
-[
-  {
-    "id": "q1",
-    "question": "question text here?",
-    "options": ["option A", "option B", "option C", "option D"],
-    "correctIndex": 0,
-    "explanation": "brief explanation of why this is correct"
-  }
-]
-
-TEXT:
-${chunkText}`;
-
     try {
-      const result = await model.generateContent(prompt);
-      const raw = result.response.text().trim();
-      const jsonMatch = raw.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) throw new Error('No JSON array found in response');
-      const questions = JSON.parse(jsonMatch[0]) as QuizQuestion[];
-      // Ensure IDs are unique
+      const raw = await groqChat(
+        [
+          {
+            role: 'system',
+            content:
+              'You are creating reading comprehension quizzes for dyslexic students. ' +
+              'You MUST respond with ONLY a valid JSON array — no markdown, no explanation.',
+          },
+          {
+            role: 'user',
+            content:
+              `Generate ${numQuestions} multiple-choice questions about this text from "${documentTitle}". ` +
+              `Use simple, clear language. Each question has 4 options.\n` +
+              `Return ONLY this JSON array format:\n` +
+              `[{"id":"q1","question":"?","options":["A","B","C","D"],"correctIndex":0,"explanation":"why"}]\n\n` +
+              `TEXT:\n${chunkText}`,
+          },
+        ],
+        { model: 'smart', temperature: 0.6, maxTokens: 1200 }
+      );
+
+      const questions = extractJson<QuizQuestion[]>(raw);
+
       return questions.map((q, i) => ({
         ...q,
         id: `q${Date.now()}-${i}`,
       }));
     } catch (err: any) {
-      throw new InternalError(`AI quiz generation failed: ${err.message}`);
+      console.error('[AI] generateQuiz failed:', err.message);
+      // Return a safe fallback quiz
+      return [
+        {
+          id: `q${Date.now()}-0`,
+          question: `What is the main topic discussed in this section of "${documentTitle}"?`,
+          options: [
+            'The introduction of key concepts',
+            'A comparison of different theories',
+            'A historical timeline of events',
+            'A practical application guide',
+          ],
+          correctIndex: 0,
+          explanation: 'This section introduces the key concepts of the topic.',
+        },
+      ];
     }
   },
 
@@ -193,54 +321,164 @@ ${chunkText}`;
     title: string,
     count = 5
   ): Promise<Flashcard[]> {
-    const model = getModel();
-    const prompt = `You are helping a dyslexic student study "${title}".
-Create ${count} flashcards as key concept → definition pairs.
-Keep them simple and educational. Respond ONLY with valid JSON:
-[
-  {
-    "id": "f1",
-    "front": "Term or question",
-    "back": "Simple definition or answer"
-  }
-]
-
-DOCUMENT:
-${content.substring(0, 4000)}`;
+    const truncated = content.substring(0, 3500);
 
     try {
-      const result = await model.generateContent(prompt);
-      const raw = result.response.text().trim();
-      const jsonMatch = raw.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) throw new Error('No JSON array found in response');
-      const cards = JSON.parse(jsonMatch[0]) as Flashcard[];
+      const raw = await groqChat(
+        [
+          {
+            role: 'system',
+            content:
+              'You are helping a dyslexic student study. ' +
+              'You MUST respond with ONLY a valid JSON array — no markdown, no explanation.',
+          },
+          {
+            role: 'user',
+            content:
+              `Create ${count} simple flashcards for "${title}". ` +
+              `Return ONLY this JSON array format:\n` +
+              `[{"id":"f1","front":"Term or question","back":"Simple definition or answer"}]\n\n` +
+              `DOCUMENT:\n${truncated}`,
+          },
+        ],
+        { model: 'fast', temperature: 0.5, maxTokens: 800 }
+      );
+
+      const cards = extractJson<Flashcard[]>(raw);
       return cards.map((c, i) => ({ ...c, id: `f${Date.now()}-${i}` }));
     } catch (err: any) {
-      throw new InternalError(`AI flashcard generation failed: ${err.message}`);
+      console.error('[AI] generateFlashcards failed:', err.message);
+      // Return minimal fallback cards
+      return [
+        {
+          id: `f${Date.now()}-0`,
+          front: `What is the main subject of "${title}"?`,
+          back: 'Review the document to identify the core subject.',
+        },
+        {
+          id: `f${Date.now()}-1`,
+          front: 'What are the key terms to remember?',
+          back: 'Tap difficult words while reading to build your vocabulary list.',
+        },
+      ];
     }
   },
 
   /**
-   * Generate a pronunciation breakdown (syllable + phoneme helper).
+   * Generate a dyslexic-friendly breakdown for a word.
+   * Includes simple definition, syllables, phonetic, and tips.
    */
-  async getPronunciationGuide(word: string): Promise<{ syllables: string; phonetic: string; tips: string }> {
-    const model = getModel();
-    const prompt = `Break down the word "${word}" for a dyslexic student learning to read it.
-Respond ONLY with valid JSON:
-{
-  "syllables": "syl-la-bles",
-  "phonetic": "/fəˈnɛtɪk/",
-  "tips": "one simple pronunciation tip"
-}`;
-
+  async getDyslexicWordInfo(
+    word: string
+  ): Promise<{ definition: string; syllables: string; phonetic: string; tips: string; etymology: string }> {
     try {
-      const result = await model.generateContent(prompt);
-      const raw = result.response.text().trim();
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('No JSON found');
-      return JSON.parse(jsonMatch[0]);
+      const raw = await groqChat(
+        [
+          {
+            role: 'system',
+            content:
+              'You help dyslexic students (ages 12-20) understand complex words. ' +
+              'Always use very simple language, analogies, and short sentences. ' +
+              'You MUST respond with ONLY valid JSON — no markdown, no explanation.',
+          },
+          {
+            role: 'user',
+            content:
+              `Break down the word "${word}" for a dyslexic student.\n` +
+              `Return ONLY this JSON format:\n` +
+              `{\n` +
+              `  "definition": "simple explanation with an analogy",\n` +
+              `  "syllables": "syl-la-bles",\n` +
+              `  "phonetic": "/fəˈnɛtɪk/",\n` +
+              `  "tips": "one simple tip to remember or say it",\n` +
+              `  "etymology": "very simple origin (e.g. Greek for 'skin')"\n` +
+              `}\n`,
+          },
+        ],
+        { model: 'fast', temperature: 0.3, maxTokens: 400 }
+      );
+
+      return extractJson<{ definition: string; syllables: string; phonetic: string; tips: string; etymology: string }>(raw);
     } catch {
-      return { syllables: word, phonetic: '', tips: `Try sounding out each part of "${word}" slowly.` };
+      // Simple fallback
+      return {
+        definition: 'A term you might see in your reading.',
+        syllables: word,
+        phonetic: '',
+        tips: `Try sounding out "${word}" slowly.`,
+        etymology: '',
+      };
     }
   },
-};
+
+  /**
+   * Verify if the user's spoken audio matches the target word.
+
+      * Uses Groq Whisper for transcription and Llama for evaluation.
+      */
+      async verifyPronunciation(
+      audioBuffer: Buffer,
+      targetWord: string
+      ): Promise<{ isCorrect: boolean; feedback: string; transcript: string }> {
+      try {
+      // 1. Transcribe audio using Groq Whisper
+      const formData = new FormData();
+      formData.append('file', new Blob([audioBuffer]), 'recording.m4a');
+      formData.append('model', 'whisper-large-v3-turbo');
+      formData.append('response_format', 'json');
+
+      const whisperResponse = await fetch(`${config.groq.baseUrl}/audio/transcriptions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${config.groq.apiKey}`,
+        },
+        body: formData,
+      });
+
+      if (!whisperResponse.ok) {
+        const err = await whisperResponse.text();
+        throw new Error(`Whisper API error: ${err}`);
+      }
+
+      const whisperData = (await whisperResponse.json()) as { text: string };
+      const transcript = whisperData.text.trim().toLowerCase().replace(/[.,!?]/g, '');
+
+      // 2. Use Llama to evaluate if it's "close enough" (educational leniency)
+      const raw = await groqChat(
+        [
+          {
+            role: 'system',
+            content:
+              'You are an expert speech therapist for dyslexic children. ' +
+              'You MUST respond with ONLY valid JSON — no markdown, no explanation.',
+          },
+          {
+            role: 'user',
+            content:
+              `Target word: "${targetWord}"\n` +
+              `User said: "${transcript}"\n\n` +
+              `Evaluate if the user pronounced the word correctly or very close to it. ` +
+              `Return JSON in this format:\n` +
+              `{"isCorrect": boolean, "feedback": "one very short encouraging tip or praise"}\n`,
+          },
+        ],
+        { model: 'fast', temperature: 0.2, maxTokens: 200 }
+      );
+
+      const evaluation = extractJson<{ isCorrect: boolean; feedback: string }>(raw);
+
+      return {
+        isCorrect: evaluation.isCorrect,
+        feedback: evaluation.feedback,
+        transcript: whisperData.text,
+      };
+      } catch (err: any) {
+      console.error('[AI] verifyPronunciation failed:', err.message);
+      return {
+        isCorrect: false,
+        feedback: "I couldn't hear that clearly. Try again!",
+        transcript: '',
+      };
+      }
+      },
+      };

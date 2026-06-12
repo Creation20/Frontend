@@ -11,8 +11,16 @@ const envSchema = z.object({
   JWT_ACCESS_EXPIRY: z.string().default('15m'),
   JWT_REFRESH_EXPIRY: z.string().default('30d'),
 
-  GEMINI_API_KEY: z.string().min(1, 'GEMINI_API_KEY is required'),
-  GEMINI_MODEL: z.string().default('gemini-1.5-flash'),
+  // ── Groq (Free AI) ──────────────────────────────────────────────────────────
+  // Get your FREE API key at: https://console.groq.com
+  // Free tier: 14,400 req/day | 6,000 tokens/min | No credit card needed
+  GROQ_API_KEY: z.string().min(1, 'GROQ_API_KEY is required. Get a free key at https://console.groq.com'),
+  // Recommended free models (all free on Groq):
+  //   llama-3.3-70b-versatile  → best quality, use for complex tasks
+  //   llama-3.1-8b-instant     → fastest, use for simple tasks
+  //   mixtral-8x7b-32768       → large context window (32k tokens)
+  GROQ_MODEL: z.string().default('llama-3.3-70b-versatile'),
+  GROQ_FAST_MODEL: z.string().default('llama-3.1-8b-instant'),
 
   CORS_ORIGIN: z.string().default('*'),
   MAX_FILE_SIZE_MB: z.string().default('20'),
@@ -43,9 +51,11 @@ export const config = {
     refreshExpiry: _env.data.JWT_REFRESH_EXPIRY,
   },
 
-  gemini: {
-    apiKey: _env.data.GEMINI_API_KEY,
-    model: _env.data.GEMINI_MODEL,
+  groq: {
+    apiKey: _env.data.GROQ_API_KEY,
+    model: _env.data.GROQ_MODEL,
+    fastModel: _env.data.GROQ_FAST_MODEL,
+    baseUrl: 'https://api.groq.com/openai/v1',
   },
 
   cors: {

@@ -94,16 +94,19 @@ export async function aiRoutes(app: FastifyInstance) {
     const { word } = request.params as { word: string };
     if (!word || word.length > 50) throw new ValidationError('Invalid word.');
 
-    const [dictResult, pronunciation] = await Promise.all([
+    const [dictResult, aiResult] = await Promise.all([
       DictionaryService.lookup(word),
-      AiService.getPronunciationGuide(word),
+      AiService.getDyslexicWordInfo(word),
     ]);
 
     return {
       ...dictResult,
-      syllables: dictResult.syllables || pronunciation.syllables,
-      phonetic: dictResult.phonetic || pronunciation.phonetic,
-      pronunciationTips: pronunciation.tips,
+      // Prioritize AI simplified definition for better dyslexic experience
+      definition: aiResult.definition || dictResult.definition,
+      syllables: aiResult.syllables || dictResult.syllables,
+      phonetic: aiResult.phonetic || dictResult.phonetic,
+      pronunciationTips: aiResult.tips,
+      etymology: aiResult.etymology || dictResult.etymology,
     };
   });
 
@@ -140,5 +143,25 @@ export async function aiRoutes(app: FastifyInstance) {
   app.post('/pronunciation', async (request) => {
     const { word } = z.object({ word: z.string().min(1).max(50) }).parse(request.body);
     return AiService.getPronunciationGuide(word);
+  });
+
+  // POST /api/v1/ai/pronounce/verify — AI Verify user pronunciation
+  app.post('/pronounce/verify', async (request) => {
+    const file = await request.file();
+    if (!file) throw new ValidationError('No audio file uploaded.');
+
+    // Word is passed in fields
+    const word = (file as any).fields?.word?.value;
+    if (!word) throw new ValidationError('Target word is required.');
+
+    const buffer = await file.toBuffer();
+    const result = await AiService.verifyPronunciation(buffer, word);
+
+    // Award XP if correct
+    if (result.isCorrect) {
+      await XpService.awardXp(request.user.userId, 'VOCAB_CHALLENGE_CORRECT', 25);
+    }
+
+    return result;
   });
 }

@@ -11,7 +11,7 @@ Production-grade REST API built with **Fastify**, **TypeScript**, **PostgreSQL**
 | Framework | Fastify 4 + TypeScript |
 | Database | PostgreSQL + Prisma ORM |
 | Auth | JWT (access + refresh) + bcrypt |
-| AI | Google Gemini 1.5 Flash (free) |
+| AI | Groq (Llama 3.3 70B & 3.1 8B) |
 | Definitions | Free Dictionary API (no key) |
 | OCR | Tesseract.js (server-side, free) |
 | File Processing | pdf-parse |
@@ -49,7 +49,9 @@ Then edit `.env` and fill in:
 DATABASE_URL="postgresql://postgres:yourpassword@localhost:5432/lexiaid"
 JWT_ACCESS_SECRET="generate-with: node -e \"console.log(require('crypto').randomBytes(64).toString('hex'))\""
 JWT_REFRESH_SECRET="generate-with: node -e \"console.log(require('crypto').randomBytes(64).toString('hex'))\""
-GEMINI_API_KEY="your-key-from-aistudio.google.com"
+GROQ_API_KEY="your-key-from-console.groq.com"
+GROQ_MODEL="llama-3.3-70b-versatile"
+GROQ_FAST_MODEL="llama-3.1-8b-instant"
 ```
 
 ### 3. Set up PostgreSQL
@@ -230,6 +232,7 @@ pm2 start dist/server.js --name lexiaid-api
 
 | Service | Usage | Limits |
 |---|---|---|
-| **Gemini 1.5 Flash** | Simplify, summarize, chat, quiz, flashcards | 15 req/min, 1M tokens/day |
+| **Llama-3.3-70b-versatile** | Summarize, Quiz, Chat, Flashcards | 14,400 req/day (Groq Free) |
+| **Llama-3.1-8b-instant** | Simplify, Word Def, Pronunciation | Fast & Lightweight |
 | **Free Dictionary API** | Word definitions + syllables | Unlimited (no key) |
 | **Tesseract.js** | OCR (image → text) | Unlimited (runs locally) |

@@ -1,5 +1,6 @@
 import * as Speech from 'expo-speech';
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
+import { Platform } from 'react-native';
 import { useReaderStore } from '../store/useReaderStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 
@@ -7,7 +8,41 @@ export function useTTS() {
   const { settings } = useSettingsStore();
   const { isPlaying, setIsPlaying, setIsTTSLoading, setCurrentWord } =
     useReaderStore();
+  const [selectedVoice, setSelectedVoice] = useState<string | undefined>(undefined);
   const wordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Intelligently select the best available voice
+  useEffect(() => {
+    async function setupVoice() {
+      try {
+        const voices = await Speech.getAvailableVoicesAsync();
+        if (voices.length > 0) {
+          // Heuristic for "human" sounding voices
+          // Prioritize 'enhanced' or 'premium' quality voices
+          const preferredVoices = voices.filter(v => 
+            v.language.startsWith('en') && 
+            (v.quality === Speech.VoiceQuality.Enhanced || 
+             v.name.toLowerCase().includes('enhanced') || 
+             v.name.toLowerCase().includes('premium'))
+          );
+
+          // Specific platform favorites
+          const topPick = preferredVoices.find(v => 
+            v.name.toLowerCase().includes('samantha') || 
+            v.name.toLowerCase().includes('alex') || 
+            v.name.toLowerCase().includes('google')
+          ) || preferredVoices[0] || voices.find(v => v.language.startsWith('en'));
+
+          if (topPick) {
+            setSelectedVoice(topPick.identifier);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to fetch voices:', e);
+      }
+    }
+    setupVoice();
+  }, []);
 
   const stopWordTimer = useCallback(() => {
     if (wordTimerRef.current) {
@@ -51,6 +86,7 @@ export function useTTS() {
         rate: settings.ttsSpeed,
         pitch: settings.ttsPitch,
         language: 'en-US',
+        voice: selectedVoice,
         onStart: () => {
           setIsTTSLoading(false);
           setIsPlaying(true);
@@ -80,6 +116,7 @@ export function useTTS() {
       settings.ttsSpeed,
       settings.ttsPitch,
       settings.highlightingEnabled,
+      selectedVoice,
       setIsPlaying,
       setIsTTSLoading,
       setCurrentWord,

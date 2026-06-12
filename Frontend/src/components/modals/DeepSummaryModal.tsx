@@ -20,23 +20,31 @@ interface DeepSummaryModalProps {
   onClose: () => void;
 }
 
+interface AISummary {
+  coreConcept: string;
+  keyTakeaways: string[];
+  conclusion: string;
+}
+
 export function DeepSummaryModal({ document, visible, onClose }: DeepSummaryModalProps) {
   const theme = useTheme();
   const { addXP } = useUserStore();
   const [loading, setLoading] = useState(true);
-  const [summary, setSummary] = useState<string | null>(null);
+  const [summary, setSummary] = useState<AISummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible && document.id) {
       const fetchSummary = async () => {
         setLoading(true);
+        setError(null);
         try {
           const result = await api.ai.summarize(document.id);
           setSummary(result.summary);
           if (result.xpAwarded) addXP(result.xpAwarded);
         } catch (err: any) {
           console.warn('Failed to fetch summary:', err.message);
-          setSummary("I couldn't generate a deep summary at this time. Please check your connection.");
+          setError("I couldn't generate a deep summary at this time. Please check your connection.");
         } finally {
           setLoading(false);
         }
@@ -74,28 +82,39 @@ export function DeepSummaryModal({ document, visible, onClose }: DeepSummaryModa
           ) : (
             <>
               <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+                {error && (
+                  <View style={[styles.section, { borderLeftColor: theme.error || '#FF4444' }]}>
+                    <Text style={[styles.sectionLabel, { color: theme.error || '#FF4444' }]}>ERROR</Text>
+                    <Text style={[styles.sectionText, { color: theme.text, fontFamily: theme.fontFamily }]}>
+                      {error}
+                    </Text>
+                  </View>
+                )}
+
                 <View style={[styles.section, { borderLeftColor: theme.primary }]}>
                    <Text style={[styles.sectionLabel, { color: theme.primary }]}>CORE CONCEPT</Text>
                    <Text style={[styles.sectionText, { color: theme.text, fontFamily: theme.fontFamily }]}>
-                     {summary || (document.title + " summary is being processed.")}
+                     {summary?.coreConcept || (!error && (document.title + " summary is being processed."))}
                    </Text>
                 </View>
 
-                {document.flashcards && document.flashcards.length > 0 && (
+                {summary && summary.keyTakeaways && summary.keyTakeaways.length > 0 && (
                   <View style={[styles.section, { borderLeftColor: theme.accent }]}>
                     <Text style={[styles.sectionLabel, { color: theme.accent }]}>KEY TAKEAWAYS</Text>
-                    <Text style={[styles.sectionText, { color: theme.text, fontFamily: theme.fontFamily }]}>
-                      • Complexity is broken down into manageable units.{"\n"}
-                      • Key terminology like {document.flashcards[0].back} is critical to mastery.{"\n"}
-                      • Practical application is shown through structural analysis.
-                    </Text>
+                    <View style={{ gap: 4 }}>
+                      {summary.keyTakeaways.map((item, idx) => (
+                        <Text key={idx} style={[styles.sectionText, { color: theme.text, fontFamily: theme.fontFamily }]}>
+                          • {item}
+                        </Text>
+                      ))}
+                    </View>
                   </View>
                 )}
 
                 <View style={[styles.section, { borderLeftColor: theme.success }]}>
                    <Text style={[styles.sectionLabel, { color: theme.success }]}>SIMPLIFIED CONCLUSION</Text>
                    <Text style={[styles.sectionText, { color: theme.text, fontFamily: theme.fontFamily }]}>
-                     {document.simplifiedContent || "Refer to the main summary for core takeaways."}
+                     {summary?.conclusion || document.simplifiedContent || "Refer to the main summary for core takeaways."}
                    </Text>
                 </View>
               </ScrollView>

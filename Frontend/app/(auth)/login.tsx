@@ -31,14 +31,13 @@ export default function LoginScreen() {
     }
     setError('');
     setLoading(true);
-    
+
     try {
-      await login(email, password);
+      await login(email.trim(), password);
       router.replace('/(tabs)');
     } catch (err: any) {
       setError(err.message || 'Login failed. Please check your credentials.');
-    } finally {
-      setLoading(true); // Keep it loading while redirecting or set to false if error
+      // Only set loading false on error — on success we're navigating away
       setLoading(false);
     }
   };
@@ -46,15 +45,9 @@ export default function LoginScreen() {
   return (
     <View style={styles.root}>
       {/* Header Gradient */}
-      <LinearGradient
-        colors={['#0B6E6E', '#083F3F']}
-        style={styles.header}
-      >
+      <LinearGradient colors={['#0B6E6E', '#083F3F']} style={styles.header}>
         <SafeAreaView edges={['top']}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backBtn}
-          >
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={22} color="rgba(255,255,255,0.8)" />
           </TouchableOpacity>
           <View style={styles.logoRow}>
@@ -62,9 +55,7 @@ export default function LoginScreen() {
             <Text style={styles.logoText}>LexiAid</Text>
           </View>
           <Text style={styles.headerTitle}>Welcome back</Text>
-          <Text style={styles.headerSubtitle}>
-            Continue your reading journey
-          </Text>
+          <Text style={styles.headerSubtitle}>Continue your reading journey</Text>
         </SafeAreaView>
       </LinearGradient>
 
@@ -90,6 +81,7 @@ export default function LoginScreen() {
                 placeholderTextColor="#9BA3BF"
                 keyboardType="email-address"
                 autoCapitalize="none"
+                autoCorrect={false}
                 style={styles.input}
               />
             </View>
@@ -168,14 +160,8 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#F8F9FE',
-  },
-  header: {
-    paddingHorizontal: 24,
-    paddingBottom: 36,
-  },
+  root: { flex: 1, backgroundColor: '#F8F9FE' },
+  header: { paddingHorizontal: 24, paddingBottom: 36 },
   backBtn: {
     marginTop: 8,
     marginBottom: 16,
@@ -186,32 +172,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-  },
-  logoEmoji: {
-    fontSize: 28,
-  },
-  logoText: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
-  },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -1,
-  },
-  headerSubtitle: {
-    fontSize: 15,
-    color: 'rgba(255,255,255,0.7)',
-    marginTop: 4,
-  },
+  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
+  logoText: { fontSize: 22, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.5 },
+  headerTitle: { fontSize: 32, fontWeight: '800', color: '#FFFFFF', letterSpacing: -1 },
+  headerSubtitle: { fontSize: 15, color: 'rgba(255,255,255,0.7)', marginTop: 4 },
   formWrapper: {
     flex: 1,
     marginTop: -20,
@@ -220,19 +184,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8F9FE',
     overflow: 'hidden',
   },
-  form: {
-    padding: 28,
-    gap: 16,
-  },
-  fieldGroup: {
-    gap: 8,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#4A5068',
-    letterSpacing: 0.5,
-  },
+  form: { padding: 28, gap: 16 },
+  fieldGroup: { gap: 8 },
+  label: { fontSize: 13, fontWeight: '600', color: '#4A5068', letterSpacing: 0.5 },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -244,11 +198,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     gap: 10,
   },
-  input: {
-    flex: 1,
-    fontSize: 15,
-    color: '#1A1D2E',
-  },
+  input: { flex: 1, fontSize: 15, color: '#1A1D2E' },
   errorBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -257,23 +207,10 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
   },
-  errorText: {
-    color: '#991B1B',
-    fontSize: 13,
-  },
-  forgotBtn: {
-    alignSelf: 'flex-end',
-  },
-  forgotText: {
-    fontSize: 13,
-    color: '#0B6E6E',
-    fontWeight: '600',
-  },
-  signInBtn: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginTop: 4,
-  },
+  errorText: { color: '#991B1B', fontSize: 13, flex: 1 },
+  forgotBtn: { alignSelf: 'flex-end' },
+  forgotText: { fontSize: 13, color: '#0B6E6E', fontWeight: '600' },
+  signInBtn: { borderRadius: 16, overflow: 'hidden', marginTop: 4 },
   signInGradient: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -281,54 +218,13 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     gap: 8,
   },
-  signInText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#E8EBF5',
-  },
-  dividerText: {
-    fontSize: 12,
-    color: '#9BA3BF',
-  },
-  demoBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderWidth: 1.5,
-    borderColor: '#E8EBF5',
-    borderRadius: 16,
-    paddingVertical: 14,
-    backgroundColor: '#FFFFFF',
-  },
-  demoBtnText: {
-    color: '#0B6E6E',
-    fontSize: 15,
-    fontWeight: '600',
-  },
+  signInText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   signUpRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 8,
   },
-  signUpPrompt: {
-    fontSize: 14,
-    color: '#9BA3BF',
-  },
-  signUpLink: {
-    fontSize: 14,
-    color: '#0B6E6E',
-    fontWeight: '700',
-  },
+  signUpPrompt: { fontSize: 14, color: '#9BA3BF' },
+  signUpLink: { fontSize: 14, color: '#0B6E6E', fontWeight: '700' },
 });

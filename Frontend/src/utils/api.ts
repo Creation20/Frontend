@@ -181,6 +181,11 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ progress, additionalSeconds }),
       }),
+    rename: (id: string, title: string) =>
+      apiFetch(`/documents/${id}/title`, {
+        method: 'PATCH',
+        body: JSON.stringify({ title }),
+      }),
     delete: (id: string) => apiFetch(`/documents/${id}`, { method: 'DELETE' }),
     addBookmark: (id: string, chunkIndex: number, wordIndex: number, note?: string) =>
       apiFetch(`/documents/${id}/bookmark`, {
@@ -204,6 +209,12 @@ export const api = {
     wordDefinition: (word: string) => apiFetch(`/ai/word/${encodeURIComponent(word)}`),
     pronunciation: (word: string) =>
       apiFetch('/ai/pronunciation', { method: 'POST', body: JSON.stringify({ word }) }),
+    verifyPronunciation: (formData: FormData) =>
+      apiFetch('/ai/pronounce/verify', {
+        method: 'POST',
+        body: formData,
+        headers: {}, // Let browser set boundary
+      }),
   },
   vocabulary: {
     list: (filter?: 'mastered' | 'learning') =>

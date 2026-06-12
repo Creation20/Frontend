@@ -8,10 +8,13 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../../src/hooks/useTheme';
@@ -24,9 +27,11 @@ import { LibrarySearchBar } from '../../src/components/library/LibrarySearchBar'
 export default function LibraryScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { documents, fetchDocuments, uploadDocument, removeDocument, isLoading } = useLibraryStore();
+  const { documents, fetchDocuments, uploadDocument, removeDocument, renameDocument, isLoading } = useLibraryStore();
   const { addXP } = useUserStore();
   const [searchQuery, setSearchQuery] = useState('');
+  const [renamingDoc, setRenamingDoc] = useState<{ id: string; title: string } | null>(null);
+  const [newTitle, setNewTitle] = useState('');
 
   useEffect(() => {
     fetchDocuments();
@@ -114,6 +119,24 @@ export default function LibraryScreen() {
     ]);
   };
 
+  const handleRename = (id: string, title: string) => {
+    setRenamingDoc({ id, title });
+    setNewTitle(title);
+  };
+
+  const submitRename = async () => {
+    if (!renamingDoc || !newTitle.trim() || newTitle === renamingDoc.title) {
+      setRenamingDoc(null);
+      return;
+    }
+    try {
+      await renameDocument(renamingDoc.id, newTitle.trim());
+      setRenamingDoc(null);
+    } catch (err: any) {
+      Alert.alert('Error', 'Failed to rename document');
+    }
+  };
+
   return (
     <View style={[styles.root, { backgroundColor: theme.background }]}>
       <SafeAreaView edges={['top']} style={styles.header}>
@@ -145,9 +168,14 @@ export default function LibraryScreen() {
         {filteredDocs.map((doc) => (
           <View key={doc.id} style={styles.docWrapper}>
             <DocumentCard document={doc} onPress={() => router.push(`/reader/${doc.id}`)} />
-            <TouchableOpacity onPress={() => handleDelete(doc.id, doc.title)} style={styles.deleteBtn}>
-               <Ionicons name="trash-outline" size={18} color="#EF4444" />
-            </TouchableOpacity>
+            <View style={styles.docActions}>
+              <TouchableOpacity onPress={() => handleRename(doc.id, doc.title)} style={[styles.actionBtnSmall, { backgroundColor: theme.surface }]}>
+                <MaterialCommunityIcons name="pencil-outline" size={16} color={theme.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleDelete(doc.id, doc.title)} style={[styles.actionBtnSmall, { backgroundColor: theme.surface }]}>
+                <Ionicons name="trash-outline" size={16} color="#EF4444" />
+              </TouchableOpacity>
+            </View>
           </View>
         ))}
         {filteredDocs.length === 0 && (
@@ -158,6 +186,37 @@ export default function LibraryScreen() {
         )}
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* Rename Modal */}
+      <Modal visible={!!renamingDoc} transparent animationType="fade">
+        <TouchableOpacity 
+          style={[styles.modalOverlay, { backgroundColor: theme.overlay }]} 
+          activeOpacity={1} 
+          onPress={() => setRenamingDoc(null)}
+        >
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContent}>
+            <TouchableOpacity activeOpacity={1} style={[styles.modalInner, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Rename Document</Text>
+              <TextInput
+                style={[styles.modalInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                value={newTitle}
+                onChangeText={setNewTitle}
+                autoFocus
+                placeholder="Enter new title..."
+                placeholderTextColor={theme.textMuted}
+              />
+              <View style={styles.modalBtns}>
+                <TouchableOpacity onPress={() => setRenamingDoc(null)} style={styles.modalBtn}>
+                  <Text style={[styles.modalBtnText, { color: theme.textMuted }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={submitRename} style={[styles.modalBtn, styles.modalBtnPrimary, { backgroundColor: theme.primary }]}>
+                  <Text style={[styles.modalBtnText, { color: '#FFF' }]}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </KeyboardAvoidingView>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -172,7 +231,17 @@ const styles = StyleSheet.create({
   actionBtn: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   scroll: { padding: 20, gap: 16 },
   docWrapper: { position: 'relative' },
-  deleteBtn: { position: 'absolute', top: 12, right: 12, width: 32, height: 32, borderRadius: 16, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center', elevation: 2 },
+  docActions: { position: 'absolute', top: 12, right: 12, flexDirection: 'row', gap: 8 },
+  actionBtnSmall: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
   emptyState: { alignItems: 'center', marginTop: 100, gap: 12 },
-  emptyText: { fontSize: 16, fontWeight: '600' }
+  emptyText: { fontSize: 16, fontWeight: '600' },
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalContent: { width: '100%', maxWidth: 400 },
+  modalInner: { borderRadius: 24, padding: 24, borderWidth: 1, gap: 20 },
+  modalTitle: { fontSize: 20, fontWeight: '800' },
+  modalInput: { height: 50, borderRadius: 12, borderWidth: 1, paddingHorizontal: 16, fontSize: 16 },
+  modalBtns: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12 },
+  modalBtn: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12 },
+  modalBtnPrimary: { minWidth: 80, alignItems: 'center' },
+  modalBtnText: { fontSize: 15, fontWeight: '700' },
 });

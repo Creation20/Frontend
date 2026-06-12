@@ -91,6 +91,13 @@ export async function documentRoutes(app: FastifyInstance) {
     );
   });
 
+  // PATCH /api/v1/documents/:id/title — Rename document
+  app.patch('/:id/title', async (request) => {
+    const { id } = request.params as { id: string };
+    const { title } = z.object({ title: z.string().min(1).max(200) }).parse(request.body);
+    return DocumentService.renameDocument(id, request.user.userId, title);
+  });
+
   // DELETE /api/v1/documents/:id — Soft delete
   app.delete('/:id', async (request, reply) => {
     const { id } = request.params as { id: string };

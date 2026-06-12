@@ -35,19 +35,52 @@ export async function vocabularyRoutes(app: FastifyInstance) {
     });
   });
 
+  // ⚠️ IMPORTANT: /challenge MUST be registered BEFORE /:word/mastery
+  // Otherwise Fastify will match "challenge" as the :word parameter.
+  // GET /api/v1/vocabulary/challenge — Get random unmastered words for the game
+  app.get('/challenge', async (request) => {
+    const userId = request.user.userId;
+
+    const words = await prisma.vocabularyWord.findMany({
+      where: { userId, mastered: false },
+      orderBy: { lastTapped: 'desc' },
+      take: 20,
+    });
+
+    // Pick up to 5 random words from the pool
+    const shuffled = words.sort(() => Math.random() - 0.5).slice(0, 5);
+
+    if (shuffled.length < 2) {
+      // Not enough unmastered words — include mastered ones to fill up
+      const mastered = await prisma.vocabularyWord.findMany({
+        where: { userId, mastered: true },
+        take: 5 - shuffled.length,
+      });
+      shuffled.push(...mastered);
+    }
+
+    return { words: shuffled };
+  });
+
   // POST /api/v1/vocabulary — Add or increment a word
   app.post('/', async (request, reply) => {
     const body = addWordSchema.parse(request.body);
     const userId = request.user.userId;
 
-    // Auto-look up definition if not provided
     let definition = body.definition;
     let syllables = body.syllables;
 
+    // Auto-look up definition if not provided
     if (!definition || !syllables) {
-      const dictResult = await DictionaryService.lookup(body.word);
-      definition = definition ?? dictResult.definition;
-      syllables = syllables ?? dictResult.syllables;
+      try {
+        const dictResult = await DictionaryService.lookup(body.word);
+        definition = definition ?? dictResult.definition;
+        syllables = syllables ?? dictResult.syllables;
+      } catch {
+        // Dictionary lookup failed — use placeholders
+        definition = definition ?? 'Definition not available.';
+        syllables = syllables ?? body.word;
+      }
     }
 
     // Upsert: increment tappedCount if word already exists
@@ -81,6 +114,7 @@ export async function vocabularyRoutes(app: FastifyInstance) {
   });
 
   // PATCH /api/v1/vocabulary/:word/mastery — Toggle mastery
+  // NOTE: This must come AFTER /challenge to avoid route conflict
   app.patch('/:word/mastery', async (request) => {
     const { word } = request.params as { word: string };
     const { mastered } = updateMasterySchema.parse(request.body);
@@ -109,30 +143,5 @@ export async function vocabularyRoutes(app: FastifyInstance) {
       newXp: xpResult?.newXp,
       leveledUp: xpResult?.leveledUp ?? false,
     };
-  });
-
-  // GET /api/v1/vocabulary/challenge — Get 5 random unmastered words for game
-  app.get('/challenge', async (request) => {
-    const userId = request.user.userId;
-
-    const words = await prisma.vocabularyWord.findMany({
-      where: { userId, mastered: false },
-      orderBy: { lastTapped: 'desc' },
-      take: 20,
-    });
-
-    // Pick 5 random from the pool
-    const shuffled = words.sort(() => Math.random() - 0.5).slice(0, 5);
-
-    if (shuffled.length < 2) {
-      // Not enough words — include mastered ones to fill up
-      const mastered = await prisma.vocabularyWord.findMany({
-        where: { userId, mastered: true },
-        take: 5 - shuffled.length,
-      });
-      shuffled.push(...mastered);
-    }
-
-    return { words: shuffled };
   });
 }
